@@ -22,7 +22,26 @@
   ((peers :initarg :peers)
    (this-peer :initarg :this-peer
               :reader this-peer)
-   (server-process :accessor server-process)))
+   (server-process :accessor server-process)
+
+   ;; Persistent state on all servers
+   (current-term :initform 0
+                 :accessor current-term)
+   (voted-for :initform nil
+              :accessor voted-for)
+   (logs :initform nil
+        :accessor logs
+         :documentation "log entries")
+
+   ;; Volatile state on allservers
+   (commit-index :initform 0
+                 :accessor commit-index)
+   (last-applied :initform 0
+                 :accessor last-applied)
+
+   ;; Volatile state on leaders
+   (next-index :accessor next-index)
+   (match-index :accessor match-index)))
 
 
 (defvar *peers*
