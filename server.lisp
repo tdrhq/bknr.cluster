@@ -26,13 +26,19 @@
              :initform "localhost"
              :reader hostname)
    (port :initarg :port
-         :reader port)))
+         :reader port)
+   (id :initarg :id
+       :reader peer-id)))
 
 (defclass request-vote ()
-  ((term :initarg :term)
-   (candidate-id :initarg :candidate-id)
-   (last-log-index :initarg :last-log-index)
-   (last-log-term :initarg :last-log-term)))
+  ((term :initarg :term
+         :reader term)
+   (candidate-id :initarg :candidate-id
+                 :reader candidate-id)
+   (last-log-index :initarg :last-log-index
+                   :reader last-log-index)
+   (last-log-term :initarg :last-log-term
+                  :reader loast-log-term)))
 
 (defmethod encode-rpc-body ((self request-vote) stream)
   (with-slots (term candidate-id last-log-index last-log-term)
@@ -65,19 +71,19 @@
    (server-process :accessor server-process)
    (main-process :accessor main-process
                  :documentation "The process that does heartbeat, leadership election and such.")
-
-   (mailbox :initform (mp:make-mailbox)
-            :reader mailbox)
+   (state :accessor state)
 
    (role :initform :follower
          :accessor role)
 
-   (election-timeout :initform 0.150
+   (election-timeout :initform 1
                      :reader election-timeout
                      :documentation "The actual timeout is chosen randomly between election-timeout and 2*election-timeout")
 
-   (lock :initform (bt:make-lock))
-   (cv :initform (bt:make-condition-variable))
+   (lock :initform (bt:make-lock)
+         :reader lock)
+   (cv :initform (bt:make-condition-variable)
+       :reader cv)
 
    ;; Persistent state on all servers
    (current-term :initform 0
@@ -98,11 +104,15 @@
    (next-index :accessor next-index)
    (match-index :accessor match-index)))
 
+(defmethod peer-id ((self state-machine))
+  (peer-id (this-peer self)))
+
 
 (defvar *peers*
   (loop for port in (list 5053 5054 5055)
         collect (make-instance 'peer
-                               :port port)))
+                               :port port
+                               :id (- port 5053))))
 (defvar *machines*
   (loop for peer in *peers*
         collect (make-instance 'state-machine
@@ -110,6 +120,7 @@
                                :this-peer peer)))
 
 (defmethod start-up ((self state-machine))
+  (setf (state self) :follower)
   (setf
    (server-process self)
    (comm:start-up-server
@@ -143,34 +154,51 @@
           (handle-rpc self rpc body)))))))
 
 (defmethod handle-rpc ((self state-machine) (rpc (eql #\V)) request-vote)
-  (mp:mailbox-send (mailbox self)
-                   request-vote))
+  (bt:with-lock-held ((lock self))
+    (log:info "got object: ~a" request-vote)
+    (bt:condition-notify (cv self))))
 
 (defmethod handle-main-process ((self state-machine))
   (setf (role self) :follower)
-  (loop
-    (main-process-tick self)))
+  (bt:with-lock-held ((lock self))
+    (loop
+      (main-process-tick self))))
 
 (defmethod main-process-tick ((self state-machine))
   (let* ((divisor 10000)
          (election-timeout (* (+ 1 (/ (random divisor) divisor))
                               (election-timeout self)))
-         (mailbox (mailbox self))
          (peer-name (peer-name (this-peer self))))
-    (cond
-      ((eql :follower (role self))
-       (let ((mail (mp:mailbox-read mailbox :timeout election-timeout)))
-         (cond
-           ((not mail)
-            (log:info "Election timed out for ~a" peer-name)
-            (broadcast self +request-vote+
-                       (make-instance 'request-vote
-                                      :term 0
-                                      :candidate-id 0
-                                      :last-log-index 0
-                                      :last-log-term 0)))
-           (t
-            (log:info "Got mail for" peer-name))))))))
+    (let ((wakep (mp:condition-variable-wait (cv self) (lock self)
+                                             :timeout election-timeout)))
+      (cond
+        ((not wakep)
+         (log:info "Election timed out for ~a" peer-name)
+         (start-election self))
+        (t
+         (log:info "got message for ~a" peer-name)
+         #+nil
+         (etypecase mail
+           (request-vote
+            (when (and
+                   (= (current-term self)
+                      (term request-vote))
+                   (not (voted-for self)))
+              (setf (voted-for self)
+                    (candidate-id request-vote))
+              t))))))))
+
+(defmethod start-election ((self state-machine))
+  (with-slots (current-term state voted-for) self
+    (incf current-term)
+    (broadcast self +request-vote+
+               (make-instance 'request-vote
+                              :term current-term
+                              :candidate-id 0
+                              :last-log-index 0
+                              :last-log-term 0))
+    (setf state :candidate)
+    (setf voted-for (peer-id self))))
 
 (DEFUN peer= (peer1 peer2)
   (equal (peer-name peer1)
