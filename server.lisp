@@ -28,6 +28,32 @@
    (port :initarg :port
          :reader port)))
 
+(defclass request-vote ()
+  ((term :initarg :term)
+   (candidate-id :initarg :candidate-id)
+   (last-log-index :initarg :last-log-index)
+   (last-log-term :initarg :last-log-term)))
+
+(defmethod encode-rpc-body ((self request-vote) stream)
+  (with-slots (term candidate-id last-log-index last-log-term)
+      self
+    (encode term stream)
+    (encode candidate-id stream)
+    (encode last-log-index stream)
+    (encode last-log-term stream)))
+
+(defmethod decode-rpc-body ((rpc (eql #\V)) stream)
+  (make-instance 'request-vote
+                 :term (decode stream)
+                 :candidate-id (decode stream)
+                 :last-log-index (decode stream)
+                 :last-log-term (decode stream)))
+
+(defclass request-vote-result ()
+  ((term :initarg :term)
+   (vote-granted-p :initarg :vote-granted-p)))
+
+
 (defmethod peer-name ((self peer))
   (format nil "~a:~a" (hostname self) (port self)))
 
@@ -39,6 +65,16 @@
    (server-process :accessor server-process)
    (main-process :accessor main-process
                  :documentation "The process that does heartbeat, leadership election and such.")
+
+   (mailbox :initform (mp:make-mailbox)
+            :reader mailbox)
+
+   (role :initform :follower
+         :accessor role)
+
+   (election-timeout :initform 0.150
+                     :reader election-timeout
+                     :documentation "The actual timeout is chosen randomly between election-timeout and 2*election-timeout")
 
    (lock :initform (bt:make-lock))
    (cv :initform (bt:make-condition-variable))
@@ -88,6 +124,9 @@
     (lambda ()
       (handle-main-process self)))))
 
+(defmethod decode-rpc-body (rpc stream)
+  (decode stream))
+
 (defmethod handle-client ((self state-machine) socket)
   (mp:process-run-function
    "client thread"
@@ -99,19 +138,41 @@
                                              :element-type '(unsigned-byte 8)))
       (let ((protocol-version (decode stream)))
         (declare (ignore protocol-version))
-        (let ((rpc (%decode-char stream))
-              (body (decode stream)))
-          (log:info "Got rpc: ~a ~a" rpc body)))))))
+        (let* ((rpc (%decode-char stream))
+               (body (decode-rpc-body rpc stream)))
+          (handle-rpc self rpc body)))))))
+
+(defmethod handle-rpc ((self state-machine) (rpc (eql #\V)) request-vote)
+  (mp:mailbox-send (mailbox self)
+                   request-vote))
 
 (defmethod handle-main-process ((self state-machine))
-  (let ((state :follower))
-    (loop for i from 0 to 1000
-          do
-             (broadcast self
-                        +test-broadcast+ (format nil "hello from ~a" (peer-name (this-peer self))))
-             (sleep 5))))
+  (setf (role self) :follower)
+  (loop
+    (main-process-tick self)))
 
-(defun peer= (peer1 peer2)
+(defmethod main-process-tick ((self state-machine))
+  (let* ((divisor 10000)
+         (election-timeout (* (+ 1 (/ (random divisor) divisor))
+                              (election-timeout self)))
+         (mailbox (mailbox self))
+         (peer-name (peer-name (this-peer self))))
+    (cond
+      ((eql :follower (role self))
+       (let ((mail (mp:mailbox-read mailbox :timeout election-timeout)))
+         (cond
+           ((not mail)
+            (log:info "Election timed out for ~a" peer-name)
+            (broadcast self +request-vote+
+                       (make-instance 'request-vote
+                                      :term 0
+                                      :candidate-id 0
+                                      :last-log-index 0
+                                      :last-log-term 0)))
+           (t
+            (log:info "Got mail for" peer-name))))))))
+
+(DEFUN peer= (peer1 peer2)
   (equal (peer-name peer1)
          (peer-name peer2)))
 
@@ -125,6 +186,9 @@
         do
            (send-message peer rpc body)))
 
+(defmethod encode-rpc-body (body stream)
+  (encode body stream))
+
 (defmethod send-message ((peer peer) rpc body)
   ;; TODO: cache the connection here
   (with-open-stream (stream (comm:open-tcp-stream (hostname peer) (port peer)
@@ -132,7 +196,8 @@
                                                   :direction :io))
     (encode +protocol-version+ stream)
     (%write-char rpc stream)
-    (encode body stream)))
+
+    (encode-rpc-body body stream)))
 
 (defmethod shutdown ((self state-machine))
   (mp:process-terminate (server-process self))
