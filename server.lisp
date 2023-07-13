@@ -5,11 +5,19 @@
 ;;;; file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 (defpackage :bknr.cluster/server
-  (:use #:cl))
+  (:use #:cl)
+  (:import-from #:bknr.datastore
+                #:decode
+                #:%write-char
+                #:%decode-char
+                #:encode
+                #:encode-object
+                #:encode-char))
 (in-package :bknr.cluster/server)
 
-(defconstant +append-entries+ 1)
-(defconstant +request-vote+ 2)
+(defconstant +append-entries+ #\A)
+(defconstant +request-vote+ #\V)
+(defconstant +test-broadcast+ #\T)
 
 (defclass peer ()
   ((hostname :initarg :hostname
@@ -18,11 +26,20 @@
    (port :initarg :port
          :reader port)))
 
+(defmethod peer-name ((self peer))
+  (format nil "~a:~a" (hostname self) (port self)))
+
 (defclass state-machine ()
-  ((peers :initarg :peers)
+  ((peers :initarg :peers
+          :accessor peers)
    (this-peer :initarg :this-peer
               :reader this-peer)
    (server-process :accessor server-process)
+   (main-process :accessor main-process
+                 :documentation "The process that does heartbeat, leadership election and such.")
+
+   (lock :initform (bt:make-lock))
+   (cv :initform (bt:make-condition-variable))
 
    ;; Persistent state on all servers
    (current-term :initform 0
@@ -30,8 +47,8 @@
    (voted-for :initform nil
               :accessor voted-for)
    (logs :initform nil
-        :accessor logs
-         :documentation "log entries")
+         :accessor logs
+         :documentation "log entries. Note that the paper calls this log[]")
 
    ;; Volatile state on allservers
    (commit-index :initform 0
@@ -45,7 +62,7 @@
 
 
 (defvar *peers*
-  (loop for port in (list 5050 5051 5052)
+  (loop for port in (list 5053 5054 5055)
         collect (make-instance 'peer
                                :port port)))
 (defvar *machines*
@@ -54,19 +71,69 @@
                                :peers *peers*
                                :this-peer peer)))
 
-
 (defmethod start-up ((self state-machine))
   (setf
    (server-process self)
    (comm:start-up-server
-    :function (lambda (stream)
-                (handle-client self stream))
-    :create-stream t
-    :service (port (this-peer self)))))
+    :function (lambda (socket)
+                (handle-client self socket))
+    :service (port (this-peer self))))
+  (setf
+   (main-process self)
+   (mp:process-run-function
+    (format nil "Server thread for ~a" (peer-name (this-peer self)))
+    nil
+    (lambda ()
+      (handle-main-process self)))))
+
+(defmethod handle-client ((self state-machine) socket)
+  (mp:process-run-function
+   "client thread"
+   nil
+   (lambda ()
+    (with-open-stream (stream (make-instance 'comm:socket-stream
+                                             :socket socket
+                                             :direction :io
+                                             :element-type '(unsigned-byte 8)))
+      (let ((rpc (%decode-char stream))
+            (body (decode stream)))
+        (log:info "Got rpc: ~a ~a" rpc body))))))
+
+(defmethod handle-main-process ((self state-machine))
+  (let ((state :follower))
+    (loop for i from 0 to 1000
+          do
+             (broadcast self
+                        +test-broadcast+ (format nil "hello from ~a" (peer-name (this-peer self))))
+             (sleep 5))))
+
+(defun peer= (peer1 peer2)
+  (equal (peer-name peer1)
+         (peer-name peer2)))
+
+(defmethod true-peers ((self state-machine))
+  (loop for peer in (peers self)
+        if (not (peer= peer (this-peer self)))
+          collect peer))
+
+(defmethod broadcast ((self state-machine) rpc body)
+  (loop for peer in (true-peers self)
+        do
+           (send-message peer rpc body)))
+
+(defmethod send-message ((peer peer) rpc body)
+  ;; TODO: cache the connection here
+  (with-open-stream (stream (comm:open-tcp-stream (hostname peer) (port peer)
+                                                  :element-type '(unsigned-byte 8)
+                                                  :direction :io))
+    (%write-char rpc stream)
+    (encode body stream)))
 
 (defmethod shutdown ((self state-machine))
   (mp:process-terminate (server-process self))
-  (setf (server-process self) nil))
+  (mp:process-terminate (main-process self))
+  (setf (server-process self) nil)
+  (setf (main-process self) nil))
 
 (defun start-test ()
   (mapc #'start-up *machines*))

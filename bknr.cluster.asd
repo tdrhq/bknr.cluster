@@ -1,7 +1,8 @@
 #+lispworks
 (defsystem #:bknr.cluster
   :serial t
-  :depends-on (:bknr.datastore)
+  :depends-on (:bknr.datastore
+               :bordeaux-threads)
   :components ((:file "server")))
 
 #+lispworks
