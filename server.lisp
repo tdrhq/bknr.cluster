@@ -19,6 +19,8 @@
 (defconstant +request-vote+ #\V)
 (defconstant +test-broadcast+ #\T)
 
+(defconstant +protocol-version+ 1)
+
 (defclass peer ()
   ((hostname :initarg :hostname
              :initform "localhost"
@@ -95,9 +97,11 @@
                                              :socket socket
                                              :direction :io
                                              :element-type '(unsigned-byte 8)))
-      (let ((rpc (%decode-char stream))
-            (body (decode stream)))
-        (log:info "Got rpc: ~a ~a" rpc body))))))
+      (let ((protocol-version (decode stream)))
+        (declare (ignore protocol-version))
+        (let ((rpc (%decode-char stream))
+              (body (decode stream)))
+          (log:info "Got rpc: ~a ~a" rpc body)))))))
 
 (defmethod handle-main-process ((self state-machine))
   (let ((state :follower))
@@ -126,6 +130,7 @@
   (with-open-stream (stream (comm:open-tcp-stream (hostname peer) (port peer)
                                                   :element-type '(unsigned-byte 8)
                                                   :direction :io))
+    (encode +protocol-version+ stream)
     (%write-char rpc stream)
     (encode body stream)))
 
