@@ -55,10 +55,23 @@
                  :last-log-index (decode stream)
                  :last-log-term (decode stream)))
 
+
+
 (defclass request-vote-result ()
   ((term :initarg :term)
    (vote-granted-p :initarg :vote-granted-p)))
 
+(defmethod encode-rpc-body ((self request-vote-result) stream)
+  (with-slots (term vote-granted-p) self
+    (encode term stream)
+    (encode vote-granted-p stream)))
+
+(defmethod decode-rpc-response ((rpc (eql #\V)) stream)
+  (let ((term (decode stream))
+        (vote-granted-p (decode stream)))
+    (make-instance 'request-vote-result
+                   :term term
+                   :vote-granted-p vote-granted-p)))
 
 (defmethod peer-name ((self peer))
   (format nil "~a:~a" (hostname self) (port self)))
@@ -151,11 +164,29 @@
         (declare (ignore protocol-version))
         (let* ((rpc (%decode-char stream))
                (body (decode-rpc-body rpc stream)))
-          (handle-rpc self rpc body)))))))
+          (encode-rpc-body
+           (handle-rpc self rpc body)
+           stream)))))))
 
 (defmethod handle-rpc ((self state-machine) (rpc (eql #\V)) request-vote)
   (bt:with-lock-held ((lock self))
     (log:info "got object: ~a" request-vote)
+    (let ((vote-granted (and
+                         (<= (current-term self)
+                             (term request-vote))
+                         (not (voted-for self))
+                         (not (= (peer-id self)
+                                 (voted-for self)))
+
+                         ;; todo: check logs (5.2, 5.4)
+                         )))
+      (when vote-granted
+        (setf (voted-for self)
+              (candidate-id request-vote)))
+
+      (make-instance 'request-vote-result
+                     :term (current-term self)
+                     :vote-granted-p vote-granted))
     (bt:condition-notify (cv self))))
 
 (defmethod handle-main-process ((self state-machine))
@@ -165,6 +196,15 @@
       (main-process-tick self))))
 
 (defmethod main-process-tick ((self state-machine))
+  (ecase (state self)
+    (:follower
+     (follower-tick self))
+    (:candidate
+     (candidate-tick self))
+    (:leader
+     (leader-tick self))))
+
+(defmethod follower-tick ((Self state-machine))
   (let* ((divisor 10000)
          (election-timeout (* (+ 1 (/ (random divisor) divisor))
                               (election-timeout self)))
@@ -176,29 +216,46 @@
          (log:info "Election timed out for ~a" peer-name)
          (start-election self))
         (t
-         (log:info "got message for ~a" peer-name)
-         #+nil
-         (etypecase mail
-           (request-vote
-            (when (and
-                   (= (current-term self)
-                      (term request-vote))
-                   (not (voted-for self)))
-              (setf (voted-for self)
-                    (candidate-id request-vote))
-              t))))))))
+         (log:info "got message for ~a" peer-name))))))
+
+(defmethod leader-tick ((Self state-machine))
+  (let ((wakep (mp:condition-variable-wait (cv self) (lock self)
+                                           :timeout (/ (election-timeout self) 4))))
+    (log:info "TODO: broadcast leadership: ~a" wakep)))
+
+(defmethod candidate-tick ((self state-machine))
+  (let ((wakep (mp:condition-variable-wait (cv self) (lock self)
+                                           :timeout (election-timeout self))))
+    (cond
+      (wakep
+       ;; We've received a packet.
+       ))))
 
 (defmethod start-election ((self state-machine))
-  (with-slots (current-term state voted-for) self
-    (incf current-term)
-    (broadcast self +request-vote+
-               (make-instance 'request-vote
-                              :term current-term
-                              :candidate-id 0
-                              :last-log-index 0
-                              :last-log-term 0))
-    (setf state :candidate)
-    (setf voted-for (peer-id self))))
+  (let ((vote-count 1))
+   (with-slots (current-term state voted-for) self
+     (incf current-term)
+     (broadcast self +request-vote+
+                (make-instance 'request-vote
+                               :term current-term
+                               :candidate-id 0
+                               :last-log-index 0
+                               :last-log-term 0)
+                :on-result
+                (lambda (result)
+                  ;; This should be guaranteed to run on another
+                  ;; thread.
+                  (bt:with-lock-held ((lock self))
+                    (when
+                        (and (eql :candidate state)
+                             (eql current-term (term result)))
+                      (incf vote-count)
+                      (when (> vote-count (length (floor (peers self) 2)))
+                        (log:info "Turning into leader! ~a" (peer-id self))
+                        (setf state :leader)
+                        (bt:condition-notify (cv self)))))))
+     (setf state :candidate)
+     (setf voted-for (peer-id self)))))
 
 (DEFUN peer= (peer1 peer2)
   (equal (peer-name peer1)
@@ -209,23 +266,34 @@
         if (not (peer= peer (this-peer self)))
           collect peer))
 
-(defmethod broadcast ((self state-machine) rpc body)
+(defmethod broadcast ((self state-machine) rpc body
+                      &key on-result)
   (loop for peer in (true-peers self)
         do
-           (send-message peer rpc body)))
+           (send-message peer rpc body :on-result on-result)))
 
 (defmethod encode-rpc-body (body stream)
   (encode body stream))
 
-(defmethod send-message ((peer peer) rpc body)
-  ;; TODO: cache the connection here
-  (with-open-stream (stream (comm:open-tcp-stream (hostname peer) (port peer)
-                                                  :element-type '(unsigned-byte 8)
-                                                  :direction :io))
-    (encode +protocol-version+ stream)
-    (%write-char rpc stream)
+(defmethod send-message ((peer peer) rpc body &key on-result)
+  ;; TODO: cache the connection here, and dispatch the requesting to
+  ;; the thread for the connection.
+  (bt:make-thread
+   (lambda ()
+    (with-open-stream (stream (comm:open-tcp-stream (hostname peer) (port peer)
+                                                    :element-type '(unsigned-byte 8)
+                                                    :direction :io
+                                                    :read-timeout 1
+                                                    :write-timeout 1))
+      (encode +protocol-version+ stream)
+      (%write-char rpc stream)
 
-    (encode-rpc-body body stream)))
+      (encode-rpc-body body stream)
+      (let ((response (decode-rpc-response rpc stream)))
+        (bt:make-thread
+         (funcall
+          (or on-result #'identity)
+          response)))))))
 
 (defmethod shutdown ((self state-machine))
   (mp:process-terminate (server-process self))
