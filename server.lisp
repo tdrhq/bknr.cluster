@@ -226,7 +226,7 @@
                         (and (eql :candidate state)
                              (eql current-term (term result)))
                       (incf vote-count)
-                      (when (> vote-count (length (floor (peers self) 2)))
+                      (when (> vote-count (floor (length (peers self)) 2))
                         (log:info "Turning into leader! ~a" (peer-id self))
                         (setf state :leader)
                         (bt:condition-notify (cv self)))))))
