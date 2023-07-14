@@ -48,6 +48,22 @@
          :reader term)
    (vote-granted-p :initarg :vote-granted-p)))
 
+(defclass append-entries ()
+  ((term :initarg :term
+         :reader term)
+   (leader-id :initarg :leader-id
+              :reader leader-id)
+   (prev-log-index :initarg :prev-log-index)
+   (prev-log-term :initarg :prev-log-term)
+   (entries :initarg :entries)
+   (leader-commit :initarg :leader-commit)))
+
+(defclass append-entries-result ()
+  ((term :initarg :term
+         :reader term)
+   (successp :initarg :successp
+             :reader successp)))
+
 (defmethod peer-name ((self peer))
   (format nil "~a:~a" (hostname self) (port self)))
 
@@ -91,6 +107,9 @@
    ;; Volatile state on leaders
    (next-index :accessor next-index)
    (match-index :accessor match-index)))
+
+(defmethod print-object ((self state-machine) output)
+  (format output "#<FSM ~a>" (peer-id self)))
 
 (defmethod peer-id ((self state-machine))
   (peer-id (this-peer self)))
@@ -144,6 +163,24 @@
              stream)
             (finish-output stream))))))))
 
+(defmethod handle-rpc ((self state-machine) (append-entries append-entries))
+  (bt:with-lock-held ((lock self))
+    ;; If we're a candidate, we might need to revert back to a follower
+    (when (and
+           (eql :candidate (state self))
+           (>= (term append-entries)
+               (current-term self)))
+      (log:debug "Demoting from candidate to follower: ~a" self)
+      (setf (state self) :follower)
+      (setf (current-term self) (term append-entries)))
+    (bt:condition-notify (cv self))
+    (log:info "Got append-entries")
+
+
+    (make-instance 'append-entries-result
+                   :term (current-term self)
+                   :successp t)))
+
 (defmethod handle-rpc ((self state-machine) (request-vote request-vote))
   (bt:with-lock-held ((lock self))
     (log:info "got object: ~a" request-vote)
@@ -196,7 +233,18 @@
 (defmethod leader-tick ((Self state-machine))
   (let ((wakep (mp:condition-variable-wait (cv self) (lock self)
                                            :timeout (/ (election-timeout self) 4))))
-    (log:info "TODO: broadcast leadership: ~a" wakep)))
+    (send-heartbeat self)
+    (when wakep
+      (log:info "TODO: got woken up: ~a" self))))
+
+(defmethod send-heartbeat ((self state-machine))
+  (log:debug "Sending heartbeat: ~a" self)
+  (broadcast
+   self
+   (make-instance 'append-entries
+                  :term (current-term self)
+                  :leader-id (peer-id self)
+                  :entries nil)))
 
 (defmethod candidate-tick ((self state-machine))
   (let ((wakep (mp:condition-variable-wait (cv self) (lock self)
@@ -281,3 +329,5 @@
 
 ;; (start-test)
 ;; (stop-test)
+;; (start-up (elt *machines* 2))
+;; (shutdown (elt *machines* 0))
