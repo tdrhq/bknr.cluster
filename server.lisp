@@ -14,6 +14,7 @@
                 #:encode-object
                 #:encode-char)
   (:import-from #:util/threading
+                #:ignore-and-log-errors
                 #:make-thread))
 (in-package :bknr.cluster/server)
 
@@ -43,7 +44,8 @@
                   :reader loast-log-term)))
 
 (defclass request-vote-result ()
-  ((term :initarg :term)
+  ((term :initarg :term
+         :reader term)
    (vote-granted-p :initarg :vote-granted-p)))
 
 (defmethod peer-name ((self peer))
@@ -126,19 +128,21 @@
    "client thread"
    nil
    (lambda ()
-    (with-open-stream (stream (make-instance 'comm:socket-stream
-                                             :socket socket
-                                             :direction :io
-                                             :element-type '(unsigned-byte 8)))
-      (log:info "handling client on stream")
-      (let ((protocol-version (decode stream)))
-        (log:info "got protocol version ~a" protocol-version)
+     (ignore-and-log-errors ()
+      (with-open-stream (stream (make-instance 'comm:socket-stream
+                                               :socket socket
+                                               :direction :io
+                                               :element-type '(unsigned-byte 8)))
+        (log:info "handling client on stream")
+        (let ((protocol-version +protocol-version+))
+          (log:info "got protocol version ~a" protocol-version)
 
-        (let* ((body (cl-store:restore stream)))
-          (cl-store:store
-           (handle-rpc self body)
-           stream)
-          (finish-output stream)))))))
+          (let* ((body (cl-store:restore stream))
+                 (result (handle-rpc self body)))
+            (cl-store:store
+             result
+             stream)
+            (finish-output stream))))))))
 
 (defmethod handle-rpc ((self state-machine) (request-vote request-vote))
   (bt:with-lock-held ((lock self))
@@ -155,11 +159,10 @@
       (when vote-granted
         (setf (voted-for self)
               (candidate-id request-vote)))
-
+      (bt:condition-notify (cv self))
       (make-instance 'request-vote-result
                      :term (current-term self)
-                     :vote-granted-p vote-granted))
-    (bt:condition-notify (cv self))))
+                     :vote-granted-p vote-granted))))
 
 (defmethod handle-main-process ((self state-machine))
   (setf (role self) :follower)
@@ -200,7 +203,7 @@
                                            :timeout (election-timeout self))))
     (cond
       (wakep
-       ;; We've received a packet.
+       ;; Currently this doesn't happen until we implement AppendRPC.
        ))))
 
 (defmethod start-election ((self state-machine))
@@ -217,6 +220,7 @@
                 (lambda (result)
                   ;; This should be guaranteed to run on another
                   ;; thread.
+                  (log:info "Got a result: ~a" result)
                   (bt:with-lock-held ((lock self))
                     (when
                         (and (eql :candidate state)
@@ -254,9 +258,10 @@
                                                     :direction :io
                                                     :read-timeout 1
                                                     :write-timeout 1))
-      (encode +protocol-version+ stream)
+      ;;(encode +protocol-version+ stream)
 
       (cl-store:store body stream)
+      (finish-output stream)
       (let ((response (cl-store:restore stream)))
         (funcall
          (or on-result #'identity)
