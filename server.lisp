@@ -210,7 +210,7 @@
   (let ((vote-count 1))
    (with-slots (current-term state voted-for) self
      (incf current-term)
-     (broadcast self +request-vote+
+     (broadcast self
                 (make-instance 'request-vote
                                :term current-term
                                :candidate-id 0
@@ -242,13 +242,13 @@
         if (not (peer= peer (this-peer self)))
           collect peer))
 
-(defmethod broadcast ((self state-machine) rpc body
+(defmethod broadcast ((self state-machine) body
                       &key on-result)
   (loop for peer in (true-peers self)
         do
-           (send-message peer rpc body :on-result on-result)))
+           (send-message peer body :on-result on-result)))
 
-(defmethod send-message ((peer peer) rpc body &key on-result)
+(defmethod send-message ((peer peer) body &key on-result)
   ;; TODO: cache the connection here, and dispatch the requesting to
   ;; the thread for the connection.
   (make-thread
