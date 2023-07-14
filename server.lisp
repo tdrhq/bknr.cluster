@@ -163,25 +163,27 @@
              stream)
             (finish-output stream))))))))
 
-(defmethod handle-rpc ((self state-machine) (append-entries append-entries))
+(defmethod handle-rpc :around ((self state-machine) msg)
   (bt:with-lock-held ((lock self))
-    ;; If we're a candidate, we might need to revert back to a follower
+    (prog1
+        (call-next-method)
+      (maybe-demote self msg)
+      (bt:condition-notify (cv self)))))
 
-    (maybe-demote self append-entries)
+(defmethod handle-rpc ((self state-machine) (append-entries append-entries))
+  (log:info "Got append-entries")
 
-    (bt:condition-notify (cv self))
-    (log:info "Got append-entries")
+  (flet ((respond (successp)
+           (make-instance 'append-entries-result
+                          :term (current-term self)
+                          :successp successp)))
+    (cond
+      ((< (term append-entries) (current-term self))
+       (respond nil))
+      ;; TODO: log stuff
+      (t
+       (respond t)))))
 
-    (flet ((respond (successp)
-             (make-instance 'append-entries-result
-                            :term (current-term self)
-                            :successp successp)))
-      (cond
-        ((< (term append-entries) (current-term self))
-         (respond nil))
-        ;; TODO: log stuff
-        (t
-         (respond t))))))
 
 (defmethod maybe-demote ((self state-machine) msg)
   ;; Whether we're a leader or candidate, we demote ourselves
@@ -192,30 +194,44 @@
          (< (current-term self) (term msg)))
     (setf (state self) :follower))
   (when (< (current-term self) (term msg))
-    (setf (current-term self) (term msg))))
+    (setf (current-term self) (term msg))
+    ;; no votes in the current term
+    (setf (voted-for self) nil)))
 
 
 
 (defmethod handle-rpc ((self state-machine) (request-vote request-vote))
-  (bt:with-lock-held ((lock self))
-    (log:info "got object: ~a" request-vote)
-    (maybe-demote self request-vote)
-    (let ((vote-granted (and
-                         (<= (current-term self)
-                             (term request-vote))
-                         (not (voted-for self))
-                         (not (= (peer-id self)
-                                 (voted-for self)))
-
-                         ;; todo: check logs (5.2, 5.4)
-                         )))
-      (when vote-granted
-        (setf (voted-for self)
-              (candidate-id request-vote)))
-      (bt:condition-notify (cv self))
-      (make-instance 'request-vote-result
-                     :term (current-term self)
-                     :vote-granted-p vote-granted))))
+  (log:info "got object: ~a" request-vote)
+  (flet ((make-result (vote-granted)
+           (make-instance 'request-vote-result
+                          :term (current-term self)
+                          :vote-granted-p vote-granted)))
+    (cond
+      ((< (term request-vote)
+          (current-term self))
+       (make-result nil))
+      (t
+       ;; If term == current-term:
+       ;;    if we're a follower who hasn't voted(voted-for = nil): then we give them the vote
+       ;;    if we're a candidate  (voted-for = self) we deny
+       ;;    if we're a leader (also voted-for = self) we deny
+       ;; If term > current-term
+       ;;    if we're a follower or candidate: give them the vote
+       ;;    if we're a leader: demote ourselves and give them the vote
+       (let ((vote (and
+                    (or
+                     (null (voted-for self))
+                     (equal (candidate-id request-vote)
+                            (voted-for self)))
+                    ;; TODO: candidate's log is at least as up-to-date as receiver's log
+                    )))
+         (log:debug "Granting vote to ~a from ~a"
+                    (candidate-id request-vote)
+                    (peer-id self))
+         (when vote
+           (setf (current-term self) (term request-vote))
+           (setf (voted-for self) (candidate-id request-vote)))
+         (make-result vote))))))
 
 (defmethod handle-main-process ((self state-machine))
   (setf (role self) :follower)
@@ -280,7 +296,7 @@
      (broadcast self
                 (make-instance 'request-vote
                                :term current-term
-                               :candidate-id 0
+                               :candidate-id (peer-id self)
                                :last-log-index 0
                                :last-log-term 0)
                 :on-result
@@ -350,4 +366,4 @@
 ;; (start-test)
 ;; (stop-test)
 ;; (start-up (elt *machines* 1))
-;; (shutdown (elt *machines* 1))
+;; (shutdown (elt *machines* 0))
