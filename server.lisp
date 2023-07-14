@@ -166,20 +166,27 @@
 (defmethod handle-rpc ((self state-machine) (append-entries append-entries))
   (bt:with-lock-held ((lock self))
     ;; If we're a candidate, we might need to revert back to a follower
-    (when (and
-           (eql :candidate (state self))
-           (>= (term append-entries)
-               (current-term self)))
-      (log:debug "Demoting from candidate to follower: ~a" self)
-      (setf (state self) :follower)
-      (setf (current-term self) (term append-entries)))
+
+    (maybe-stop-election self append-entries)
+
+    (flet ((respond (successp)
+             (make-instance 'append-entries-result
+                            :term (current-term self)
+                            :successp successp)))
+      (cond
+        ((< (term append-entries) (current-term self))
+         (respond nil))
+        ;; TODO: log stuff
+        (t
+         ;; Whether we're a leader or candidate, we demote ourselves
+         ;; to a follower. (A leader shouldn't get term ==
+         ;; current-term though.)
+         (setf (state self) :follower)
+         (setf (current-term self) (term append-entries))
+         (respond t))))
+
     (bt:condition-notify (cv self))
-    (log:info "Got append-entries")
-
-
-    (make-instance 'append-entries-result
-                   :term (current-term self)
-                   :successp t)))
+    (log:info "Got append-entries")))
 
 (defmethod handle-rpc ((self state-machine) (request-vote request-vote))
   (bt:with-lock-held ((lock self))
@@ -330,4 +337,4 @@
 ;; (start-test)
 ;; (stop-test)
 ;; (start-up (elt *machines* 2))
-;; (shutdown (elt *machines* 0))
+;; (shutdown (elt *machines* 2))
