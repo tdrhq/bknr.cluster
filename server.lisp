@@ -167,7 +167,10 @@
   (bt:with-lock-held ((lock self))
     ;; If we're a candidate, we might need to revert back to a follower
 
-    (maybe-stop-election self append-entries)
+    (maybe-demote self append-entries)
+
+    (bt:condition-notify (cv self))
+    (log:info "Got append-entries")
 
     (flet ((respond (successp)
              (make-instance 'append-entries-result
@@ -178,19 +181,25 @@
          (respond nil))
         ;; TODO: log stuff
         (t
-         ;; Whether we're a leader or candidate, we demote ourselves
-         ;; to a follower. (A leader shouldn't get term ==
-         ;; current-term though.)
-         (setf (state self) :follower)
-         (setf (current-term self) (term append-entries))
-         (respond t))))
+         (respond t))))))
 
-    (bt:condition-notify (cv self))
-    (log:info "Got append-entries")))
+(defmethod maybe-demote ((self state-machine) msg)
+  ;; Whether we're a leader or candidate, we demote ourselves
+  ;; to a follower. (A leader shouldn't get term ==
+  ;; current-term though.)
+  (when (and
+         (not (eql (state self) :follower))
+         (< (current-term self) (term msg)))
+    (setf (state self) :follower))
+  (when (< (current-term self) (term msg))
+    (setf (current-term self) (term msg))))
+
+
 
 (defmethod handle-rpc ((self state-machine) (request-vote request-vote))
   (bt:with-lock-held ((lock self))
     (log:info "got object: ~a" request-vote)
+    (maybe-demote self request-vote)
     (let ((vote-granted (and
                          (<= (current-term self)
                              (term request-vote))
@@ -251,7 +260,10 @@
    (make-instance 'append-entries
                   :term (current-term self)
                   :leader-id (peer-id self)
-                  :entries nil)))
+                  :entries nil)
+   :on-result (lambda (result)
+                (bt:with-lock-held ((lock self))
+                  (maybe-demote self result)))))
 
 (defmethod candidate-tick ((self state-machine))
   (let ((wakep (mp:condition-variable-wait (cv self) (lock self)
@@ -277,6 +289,7 @@
                   ;; thread.
                   (log:info "Got a result: ~a" result)
                   (bt:with-lock-held ((lock self))
+                    (maybe-demote self result)
                     (when
                         (and (eql :candidate state)
                              (eql current-term (term result)))
@@ -336,5 +349,5 @@
 
 ;; (start-test)
 ;; (stop-test)
-;; (start-up (elt *machines* 2))
-;; (shutdown (elt *machines* 2))
+;; (start-up (elt *machines* 1))
+;; (shutdown (elt *machines* 1))
