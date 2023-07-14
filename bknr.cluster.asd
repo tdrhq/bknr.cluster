@@ -2,6 +2,8 @@
 (defsystem #:bknr.cluster
   :serial t
   :depends-on (:bknr.datastore
+               :cl-store
+               :util/threading
                :bordeaux-threads)
   :components ((:file "server")))
 

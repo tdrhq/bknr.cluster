@@ -12,7 +12,9 @@
                 #:%decode-char
                 #:encode
                 #:encode-object
-                #:encode-char))
+                #:encode-char)
+  (:import-from #:util/threading
+                #:make-thread))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -40,38 +42,9 @@
    (last-log-term :initarg :last-log-term
                   :reader loast-log-term)))
 
-(defmethod encode-rpc-body ((self request-vote) stream)
-  (with-slots (term candidate-id last-log-index last-log-term)
-      self
-    (encode term stream)
-    (encode candidate-id stream)
-    (encode last-log-index stream)
-    (encode last-log-term stream)))
-
-(defmethod decode-rpc-body ((rpc (eql #\V)) stream)
-  (make-instance 'request-vote
-                 :term (decode stream)
-                 :candidate-id (decode stream)
-                 :last-log-index (decode stream)
-                 :last-log-term (decode stream)))
-
-
-
 (defclass request-vote-result ()
   ((term :initarg :term)
    (vote-granted-p :initarg :vote-granted-p)))
-
-(defmethod encode-rpc-body ((self request-vote-result) stream)
-  (with-slots (term vote-granted-p) self
-    (encode term stream)
-    (encode vote-granted-p stream)))
-
-(defmethod decode-rpc-response ((rpc (eql #\V)) stream)
-  (let ((term (decode stream))
-        (vote-granted-p (decode stream)))
-    (make-instance 'request-vote-result
-                   :term term
-                   :vote-granted-p vote-granted-p)))
 
 (defmethod peer-name ((self peer))
   (format nil "~a:~a" (hostname self) (port self)))
@@ -148,9 +121,6 @@
     (lambda ()
       (handle-main-process self)))))
 
-(defmethod decode-rpc-body (rpc stream)
-  (decode stream))
-
 (defmethod handle-client ((self state-machine) socket)
   (mp:process-run-function
    "client thread"
@@ -160,15 +130,17 @@
                                              :socket socket
                                              :direction :io
                                              :element-type '(unsigned-byte 8)))
+      (log:info "handling client on stream")
       (let ((protocol-version (decode stream)))
-        (declare (ignore protocol-version))
-        (let* ((rpc (%decode-char stream))
-               (body (decode-rpc-body rpc stream)))
-          (encode-rpc-body
-           (handle-rpc self rpc body)
-           stream)))))))
+        (log:info "got protocol version ~a" protocol-version)
 
-(defmethod handle-rpc ((self state-machine) (rpc (eql #\V)) request-vote)
+        (let* ((body (cl-store:restore stream)))
+          (cl-store:store
+           (handle-rpc self body)
+           stream)
+          (finish-output stream)))))))
+
+(defmethod handle-rpc ((self state-machine) (request-vote request-vote))
   (bt:with-lock-held ((lock self))
     (log:info "got object: ~a" request-vote)
     (let ((vote-granted (and
@@ -272,13 +244,10 @@
         do
            (send-message peer rpc body :on-result on-result)))
 
-(defmethod encode-rpc-body (body stream)
-  (encode body stream))
-
 (defmethod send-message ((peer peer) rpc body &key on-result)
   ;; TODO: cache the connection here, and dispatch the requesting to
   ;; the thread for the connection.
-  (bt:make-thread
+  (make-thread
    (lambda ()
     (with-open-stream (stream (comm:open-tcp-stream (hostname peer) (port peer)
                                                     :element-type '(unsigned-byte 8)
@@ -286,14 +255,12 @@
                                                     :read-timeout 1
                                                     :write-timeout 1))
       (encode +protocol-version+ stream)
-      (%write-char rpc stream)
 
-      (encode-rpc-body body stream)
-      (let ((response (decode-rpc-response rpc stream)))
-        (bt:make-thread
-         (funcall
-          (or on-result #'identity)
-          response)))))))
+      (cl-store:store body stream)
+      (let ((response (cl-store:restore stream)))
+        (funcall
+         (or on-result #'identity)
+         response))))))
 
 (defmethod shutdown ((self state-machine))
   (mp:process-terminate (server-process self))
