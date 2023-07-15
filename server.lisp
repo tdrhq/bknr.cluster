@@ -126,9 +126,9 @@
         (let ((protocol-version +protocol-version+))
           (log:info "got protocol version ~a" protocol-version)
 
-          (let* ((body (cl-store:restore stream))
+          (let* ((body (decode stream))
                  (result (handle-rpc self body)))
-            (cl-store:store
+            (encode
              result
              stream)
             (finish-output stream))))))))
@@ -314,9 +314,9 @@
                                                     :write-timeout 1))
       ;;(encode +protocol-version+ stream)
 
-      (cl-store:store body stream)
+      (encode body stream)
       (finish-output stream)
-      (let ((response (cl-store:restore stream)))
+      (let ((response (decode stream)))
         (funcall
          (or on-result #'identity)
          response))))))
