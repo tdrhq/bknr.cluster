@@ -5,7 +5,8 @@
                :cl-store
                :util/threading
                :bordeaux-threads)
-  :components ((:file "server")))
+  :components ((:file "rpc")
+               (:file "server")))
 
 #+lispworks
 (defsystem #:bknr.cluster/tests

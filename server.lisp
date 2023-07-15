@@ -5,7 +5,8 @@
 ;;;; file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 (defpackage :bknr.cluster/server
-  (:use #:cl)
+  (:use #:cl
+        #:bknr.cluster/rpc)
   (:import-from #:bknr.datastore
                 #:decode
                 #:%write-char
@@ -32,37 +33,6 @@
          :reader port)
    (id :initarg :id
        :reader peer-id)))
-
-(defclass request-vote ()
-  ((term :initarg :term
-         :reader term)
-   (candidate-id :initarg :candidate-id
-                 :reader candidate-id)
-   (last-log-index :initarg :last-log-index
-                   :reader last-log-index)
-   (last-log-term :initarg :last-log-term
-                  :reader loast-log-term)))
-
-(defclass request-vote-result ()
-  ((term :initarg :term
-         :reader term)
-   (vote-granted-p :initarg :vote-granted-p)))
-
-(defclass append-entries ()
-  ((term :initarg :term
-         :reader term)
-   (leader-id :initarg :leader-id
-              :reader leader-id)
-   (prev-log-index :initarg :prev-log-index)
-   (prev-log-term :initarg :prev-log-term)
-   (entries :initarg :entries)
-   (leader-commit :initarg :leader-commit)))
-
-(defclass append-entries-result ()
-  ((term :initarg :term
-         :reader term)
-   (successp :initarg :successp
-             :reader successp)))
 
 (defmethod peer-name ((self peer))
   (format nil "~a:~a" (hostname self) (port self)))
