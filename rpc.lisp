@@ -44,7 +44,7 @@
                     collect
                     `(encode
                       (cond
-                        ((slot-boundp ',slot obj)
+                        ((slot-boundp obj ',slot)
                          ,slot)
                         (t
                          nil))
