@@ -7,6 +7,7 @@
                :bordeaux-threads)
   :components ((:file "rpc")
                (:file "transport")
+               (:file "log-file")
                (:file "server")))
 
 #+lispworks
@@ -14,4 +15,5 @@
   :serial t
   :depends-on (#:bknr.cluster)
   :components ((:file "test-rpc")
+               (:file "test-log-file")
                (:file "test-server")))
