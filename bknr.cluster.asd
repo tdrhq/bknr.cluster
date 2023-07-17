@@ -6,6 +6,7 @@
                :util/threading
                :bordeaux-threads)
   :components ((:file "rpc")
+               (:file "transport")
                (:file "server")))
 
 #+lispworks

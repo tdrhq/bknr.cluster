@@ -6,7 +6,8 @@
 
 (defpackage :bknr.cluster/server
   (:use #:cl
-        #:bknr.cluster/rpc)
+        #:bknr.cluster/rpc
+        #:bknr.cluster/transport)
   (:import-from #:bknr.datastore
                 #:decode
                 #:%write-char
@@ -25,14 +26,6 @@
 
 (defconstant +protocol-version+ 1)
 
-(defclass peer ()
-  ((hostname :initarg :hostname
-             :initform "localhost"
-             :reader hostname)
-   (port :initarg :port
-         :reader port)
-   (id :initarg :id
-       :reader peer-id)))
 
 (defmethod peer-name ((self peer))
   (format nil "~a:~a" (hostname self) (port self)))
@@ -47,6 +40,8 @@
    (main-process :accessor main-process
                  :initform nil
                  :documentation "The process that does heartbeat, leadership election and such.")
+   (transport :reader transport
+              :initform (make-instance 'transport))
    (state :accessor state)
 
    (role :initform :follower
@@ -303,26 +298,7 @@
                       &key on-result)
   (loop for peer in (true-peers self)
         do
-           (send-message peer body :on-result on-result)))
-
-(defmethod send-message ((peer peer) body &key on-result)
-  ;; TODO: cache the connection here, and dispatch the requesting to
-  ;; the thread for the connection.
-  (make-thread
-   (lambda ()
-    (with-open-stream (stream (comm:open-tcp-stream (hostname peer) (port peer)
-                                                    :element-type '(unsigned-byte 8)
-                                                    :direction :io
-                                                    :read-timeout 1
-                                                    :write-timeout 1))
-      ;;(encode +protocol-version+ stream)
-
-      (encode body stream)
-      (finish-output stream)
-      (let ((response (decode stream)))
-        (funcall
-         (or on-result #'identity)
-         response))))))
+           (send-message (transport self) peer body :on-result on-result)))
 
 (defmethod shutdown ((self state-machine))
   (when (server-process self)
