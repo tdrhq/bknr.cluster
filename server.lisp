@@ -19,6 +19,7 @@
                 #:ignore-and-log-errors
                 #:make-thread)
   (:import-from #:bknr.cluster/log-file
+                #:append-log-entry
                 #:open-log-file))
 (in-package :bknr.cluster/server)
 
@@ -37,7 +38,6 @@
           :accessor peers)
    (directory :initarg :directory
               :accessor state-machine-directory)
-   (log-file :accessor log-file)
    (this-peer :initarg :this-peer
               :reader this-peer)
    (server-process :accessor server-process
@@ -67,9 +67,8 @@
                  :accessor current-term)
    (voted-for :initform nil
               :accessor voted-for)
-   (logs :initform nil
-         :accessor logs
-         :documentation "log entries. Note that the paper calls this log[]")
+   (log-file :accessor log-file
+             :documentation "log entries. Note that the paper calls this log[]")
 
    ;; Volatile state on allservers
    (commit-index :initform 0
@@ -83,8 +82,21 @@
 
 (defgeneric commit-transaction (state-machine transaction))
 
-(defmethod apply-transaction (state-machine transaction)
-  (commit-transaction state-machine transaction))
+(defun encode-to-array (obj)
+  (let ((stream (flex:make-in-memory-output-stream)))
+    (encode obj stream)
+    (flex:get-output-stream-sequence stream)))
+
+(defun decode-from-array (arr)
+  (let ((stream (flex:make-in-memory-input-stream arr)))
+    (decode stream)))
+
+(defmethod apply-transaction ((self state-machine) transaction)
+  (append-log-entry
+   (log-file self)
+   (current-term self)
+   (encode-to-array transaction))
+  (commit-transaction self transaction))
 
 (defmethod print-object ((self state-machine) output)
   (format output "#<FSM ~a>" (peer-id self)))
