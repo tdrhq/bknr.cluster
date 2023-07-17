@@ -27,20 +27,23 @@
   (incf (val self)))
 
 (def-fixture cluster (&key (num 3))
-  (let* ((peers (loop for i below num
-                      for id from 0
-                      collect (make-instance 'peer
-                                             :id id
-                                             :port (util/random-port:random-port))))
-         (machines (loop for peer in peers
-                         collect (make-instance 'counter
-                                                :election-timeout 0.1
-                                                :peers peers
-                                                :this-peer peer))))
-    (mapc #'start-up machines)
-    (unwind-protect
-         (&body)
-      (mapc #'shutdown machines))))
+  (tmpdir:with-tmpdir (dir)
+   (let* ((peers (loop for i below num
+                       for id from 0
+                       collect (make-instance 'peer
+                                              :id id
+                                              :port (util/random-port:random-port))))
+          (machines (loop for peer in peers
+                          for id from 0
+                          collect (make-instance 'counter
+                                                 :election-timeout 0.1
+                                                 :directory (path:catdir dir (format nil "~a/" id))
+                                                 :peers peers
+                                                 :this-peer peer))))
+     (mapc #'start-up machines)
+     (unwind-protect
+          (&body)
+       (mapc #'shutdown machines)))))
 
 (defun find-leader (machines)
   (loop for machine in machines

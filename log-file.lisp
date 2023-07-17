@@ -78,7 +78,7 @@ to disregard the term.")
 (defun open-log-file (&key pathname (type 'log-file))
   (let ((log-file
           (make-instance type
-                         :pathname pathname
+                         :pathname (ensure-directories-exist pathname)
                          :stream (open pathname :direction :io
                                                 :element-type '(unsigned-byte 8)
                                                 :if-exists :append

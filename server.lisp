@@ -17,7 +17,9 @@
                 #:encode-char)
   (:import-from #:util/threading
                 #:ignore-and-log-errors
-                #:make-thread))
+                #:make-thread)
+  (:import-from #:bknr.cluster/log-file
+                #:open-log-file))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -33,6 +35,9 @@
 (defclass state-machine ()
   ((peers :initarg :peers
           :accessor peers)
+   (directory :initarg :directory
+              :accessor state-machine-directory)
+   (log-file :accessor log-file)
    (this-peer :initarg :this-peer
               :reader this-peer)
    (server-process :accessor server-process
@@ -101,6 +106,8 @@
 
 (defmethod start-up ((self state-machine))
   (setf (state self) :follower)
+  (setf (log-file self) (open-log-file
+                         :pathname (path:catfile (state-machine-directory self) "log-file")))
   (setf
    (server-process self)
    (comm:start-up-server
