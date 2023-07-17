@@ -7,6 +7,7 @@
 (defpackage :bknr.cluster/log-file
   (:use #:cl)
   (:import-from #:bknr.datastore
+                #:%read-tag
                 #:decode
                 #:encode
                 #:%write-tag
@@ -55,9 +56,14 @@ to disregard the term.")
       (goto-end self)
       (%write-tag +tag+ stream )
       (encode term stream)
-      (vector-push-extend (make-entry :term term :pos (file-position stream))
-                          (entries self))
-      (encode data stream))))
+      (add-pos-to-entries self term)
+      (encode data stream)
+      (finish-output stream))))
+
+(defun add-pos-to-entries (self term)
+  (let ((stream (log-file-stream self)))
+   (vector-push-extend (make-entry :term term :pos (file-position stream))
+                       (entries self))))
 
 (defmethod entry-at ((self log-file)
                      index)
@@ -69,13 +75,41 @@ to disregard the term.")
         (decode stream)
         (entry-term entry))))))
 
-(defun open-log-file (&key pathname)
-  (make-instance 'log-file
-                 :pathname pathname
-                 :stream (open pathname :direction :io
-                                        :element-type '(unsigned-byte 8)
-                                        :if-exists :append
-                                        :if-does-not-exist :create)))
+(defun open-log-file (&key pathname (type 'log-file))
+  (let ((log-file
+          (make-instance type
+                         :pathname pathname
+                         :stream (open pathname :direction :io
+                                                :element-type '(unsigned-byte 8)
+                                                :if-exists :append
+                                                :if-does-not-exist :create))))
+    (read-log-entries log-file)
+    log-file))
+
+(defmethod ignore-decoding-errors ((self log-file)
+                                   fn)
+  (ignore-errors
+   (funcall fn)))
+
+(defmethod read-log-entries ((self log-file))
+  (unwind-protect
+       (let ((stream (log-file-stream self)))
+         (file-position stream :start)
+         ;; TODO: we could ignore-errors this to handle incompletely
+         ;; written log files.
+         (ignore-decoding-errors
+          self
+          (lambda ()
+           (loop
+             (let ((tag (%read-tag stream nil)))
+               (unless tag
+                 (return-from read-log-entries nil))
+               (assert (eql +tag+ tag)))
+             (let ((term (decode stream)))
+               (add-pos-to-entries self term))
+             ;; Decode and discard the the log data
+             (decode stream)))))
+    (goto-end self)))
 
 (defmethod close-log-file ((self log-file))
   (close (log-file-stream self)))
