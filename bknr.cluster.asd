@@ -12,4 +12,5 @@
 (defsystem #:bknr.cluster/tests
   :serial t
   :depends-on (#:bknr.cluster)
-  :components ((:file "test-rpc")))
+  :components ((:file "test-rpc")
+               (:file "test-server")))

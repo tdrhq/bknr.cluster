@@ -42,8 +42,10 @@
           :accessor peers)
    (this-peer :initarg :this-peer
               :reader this-peer)
-   (server-process :accessor server-process)
+   (server-process :accessor server-process
+                   :initform nil)
    (main-process :accessor main-process
+                 :initform nil
                  :documentation "The process that does heartbeat, leadership election and such.")
    (state :accessor state)
 
@@ -51,6 +53,7 @@
          :accessor role)
 
    (election-timeout :initform 1
+                     :initarg :election-timeout
                      :reader election-timeout
                      :documentation "The actual timeout is chosen randomly between election-timeout and 2*election-timeout")
 
@@ -322,10 +325,13 @@
          response))))))
 
 (defmethod shutdown ((self state-machine))
-  (mp:process-terminate (server-process self))
-  (mp:process-terminate (main-process self))
-  (setf (server-process self) nil)
-  (setf (main-process self) nil))
+  (when (server-process self)
+    (mp:process-terminate (server-process self))
+    (setf (server-process self) nil))
+
+  (when (main-process self)
+    (mp:process-terminate (main-process self))
+    (setf (main-process self) nil)))
 
 (defun start-test ()
   (mapc #'start-up *machines*))
