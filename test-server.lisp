@@ -8,6 +8,8 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:commit-transaction
+                #:apply-transaction
                 #:state
                 #:start-up
                 #:state-machine
@@ -17,6 +19,13 @@
 
 (util/fiveam:def-suite)
 
+(defclass counter (state-machine)
+  ((val :accessor val
+        :initform 0)))
+
+(defmethod commit-transaction ((self counter) (msg (eql :incr)))
+  (incf (val self)))
+
 (def-fixture cluster (&key (num 3))
   (let* ((peers (loop for i below num
                       for id from 0
@@ -24,10 +33,11 @@
                                              :id id
                                              :port (util/random-port:random-port))))
          (machines (loop for peer in peers
-                         collect (make-instance 'state-machine
+                         collect (make-instance 'counter
                                                 :election-timeout 0.1
                                                 :peers peers
                                                 :this-peer peer))))
+    (mapc #'start-up machines)
     (unwind-protect
          (&body)
       (mapc #'shutdown machines))))
@@ -37,16 +47,27 @@
         if (eql :leader (state machine))
           return machine))
 
-(test we-elect-a-leader-eventually
-  (with-fixture cluster ()
-    (mapc #'start-up machines)
-    (let ((start-time (get-universal-time))
+(defun wait-for-leader (machines)
+  (let ((start-time (get-universal-time))
           (max-time 10)
           (interval 0.1))
-      (is-true
-       (loop for i from 0 below (/ max-time interval)
-             for machine = (find-leader machines)
-             if machine
-               return machine
-             do
-             (sleep interval))))))
+   (loop for i from 0 below (/ max-time interval)
+         for machine = (find-leader machines)
+         if machine
+           return machine
+         do
+            (sleep interval))))
+
+(test we-elect-a-leader-eventually
+  (with-fixture cluster ()
+    (is-true
+     (wait-for-leader machines))))
+
+(test simple-transaction
+  (with-fixture cluster ()
+    (let ((leader (wait-for-leader machines)))
+      (apply-transaction leader :incr)
+      (is (eql 1 (val leader)))
+      #+nil ;; todo
+      (dolist (machine machines)
+        (is (eql 1 (val machine)))))))

@@ -76,6 +76,11 @@
    (next-index :accessor next-index)
    (match-index :accessor match-index)))
 
+(defgeneric commit-transaction (state-machine transaction))
+
+(defmethod apply-transaction (state-machine transaction)
+  (commit-transaction state-machine transaction))
+
 (defmethod print-object ((self state-machine) output)
   (format output "#<FSM ~a>" (peer-id self)))
 
