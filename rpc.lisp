@@ -109,6 +109,13 @@
                :initform nil
                :reader successp))))
 
+(with-methods (#\L)
+  (defclass log-entry (base-rpc-object)
+    ((term :initarg :term
+           :reader term)
+     (data :initarg :data
+           :reader entry-data))))
+
 (defmethod encode-object ((self base-rpc-object)
                           stream)
   (%write-tag #\R stream)
