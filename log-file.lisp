@@ -12,11 +12,14 @@
                 #:encode
                 #:%write-tag
                 #:decode-object)
+  (:import-from #:bknr.cluster/rpc
+                #:log-entry)
   (:export
    #:open-log-file
    #:append-log-entry
    #:entry-at
-   #:close-log-file))
+   #:close-log-file
+   #:end-index))
 (in-package :bknr.cluster/log-file)
 
 (defconstant +tag+ #\L
@@ -38,6 +41,10 @@ to disregard the term.")
            :reader log-file-stream)
    (lock :initform (bt:make-lock)
          :reader lock)
+   (start-index :initform 1
+                :reader start-index)
+   (end-index :initform 1
+              :reader end-index)
    (entries :initform (make-array 0 :adjustable 0
                                     :fill-pointer 0)
             :reader entries)))
@@ -69,16 +76,19 @@ to disregard the term.")
                      index)
   (let ((stream (log-file-stream self)))
    (bt:with-lock-held ((lock self))
-     (let ((entry (aref (entries self) (1- index))))
+     (let ((entry (aref (entries self) (- index (start-index self)))))
        (goto-pos self (entry-pos entry))
-       (values
-        (decode stream)
-        (entry-term entry))))))
+       (make-instance
+        'log-entry
+        :data (decode stream)
+        :term (entry-term entry))))))
 
 (defmethod term-at ((self log-file)
                     index)
-  (when (<= (length (entries self)))
-    (let ((entry (aref (entries self) (1- index))))
+  (when (and
+         (<= (start-index self) index)
+         (< index (end-index self)))
+    (let ((entry (aref (entries self) (- index (start-index self)))))
       (entry-term entry))))
 
 (defun open-log-file (&key pathname (type 'log-file))
@@ -119,3 +129,7 @@ to disregard the term.")
 
 (defmethod close-log-file ((self log-file))
   (close (log-file-stream self)))
+
+(defmethod read-entries ((self log-file) start &optional end)
+  (loop for i from start below (or end (end-index self))
+        collect (entry-at self i)))

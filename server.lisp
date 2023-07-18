@@ -98,8 +98,10 @@
                                :id (- port 5053))))
 (defvar *machines*
   (loop for peer in *peers*
+        for i from 0
         collect (make-instance 'state-machine
                                :peers *peers*
+                               :directory (ensure-directories-exist (format nil "/tmp/fsm/~a/" i))
                                :this-peer peer)))
 
 (defmethod start-up ((self state-machine))

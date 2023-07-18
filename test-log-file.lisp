@@ -13,7 +13,10 @@
                 #:close-log-file
                 #:entry-at
                 #:append-log-entry
-                #:open-log-file))
+                #:open-log-file)
+  (:import-from #:bknr.cluster/rpc
+                #:term
+                #:entry-data))
 (in-package :bknr.cluster/test-log-file)
 
 
@@ -40,10 +43,10 @@
 (test append-log-entry
   (with-fixture state ()
     (append-log-entry log-file 10 #(1 2 3))
-    (multiple-value-bind (data term)
-        (entry-at log-file 1)
-      (is (equalp #(1 2 3) data))
-      (is (eql 10 term)))))
+    (let ((entry
+            (entry-at log-file 1)))
+      (is (equalp #(1 2 3) (entry-data entry)))
+      (is (eql 10 (term entry))))))
 
 (test re-read-log-entries
   (with-fixture state ()
@@ -51,12 +54,12 @@
     (append-log-entry log-file 11 #(3 2 1))
     (let ((other (open-log-file :pathname (path:catfile dir "foo.log")
                                 :type 'test-log-file)))
-      (multiple-value-bind (data term)
-          (entry-at other 1)
-        (is (equalp #(1 2 3) data))
-        (is (eql 10 term)))
+      (let ((entry
+              (entry-at other 1)))
+        (is (equalp #(1 2 3) (entry-data entry)))
+        (is (eql 10 (term entry))))
 
-      (multiple-value-bind (data term)
-          (entry-at other 2)
-        (is (equalp #(3 2 1) data))
-        (is (eql 11 term))))))
+      (let ((entry
+             (entry-at other 2)))
+        (is (equalp #(3 2 1) (entry-data entry)))
+        (is (eql 11 (term entry)))))))

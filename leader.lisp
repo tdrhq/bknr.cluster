@@ -21,6 +21,9 @@
                 #:state-machine
                 #:leader-tick)
   (:import-from #:bknr.cluster/log-file
+                #:read-entries
+                #:end-index
+                #:term-at
                 #:append-log-entry)
   (:import-from #:bknr.datastore
                 #:decode
@@ -38,15 +41,12 @@
 
 (defmethod send-heartbeat ((self state-machine))
   (log:debug "Sending heartbeat: ~a" self)
-  (broadcast
-   self
-   (make-instance 'append-entries
-                  :term (current-term self)
-                  :leader-id (peer-id self)
-                  :entries nil)
-   :on-result (lambda (result)
-                (bt:with-lock-held ((lock self))
-                  (maybe-demote self result)))))
+  (append-entries-from self
+                       (end-index (log-file self))
+                       :on-result
+                       (lambda (result)
+                         (bt:with-lock-held ((lock self))
+                           (maybe-demote self result)))))
 
 (defun encode-to-array (obj)
   (let ((stream (flex:make-in-memory-output-stream)))
@@ -76,6 +76,20 @@
                           (bt:condition-notify cv)))))
         (bt:condition-wait cv lock)
         (commit-transaction self transaction)))))
+
+(defun append-entries-from (self
+                            log-index &key on-result)
+  (let ((prev-log-index (1- log-index)))
+    (broadcast
+     self
+     (make-instance 'append-entries
+                    :term (current-term self)
+                    :leader-id (peer-id self)
+                    :prev-log-index prev-log-index
+                    :prev-log-term (term-at (log-file self) prev-log-index)
+                    :entries (read-entries (log-file self)
+                                           log-index))
+     :on-result on-result)))
 
 (defun broadcast-append-entry (self data &key on-result)
   (dotimes (i 2)
