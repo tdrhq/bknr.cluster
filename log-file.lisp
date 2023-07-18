@@ -13,13 +13,16 @@
                 #:%write-tag
                 #:decode-object)
   (:import-from #:bknr.cluster/rpc
+                #:entry-data
+                #:term
                 #:log-entry)
   (:export
    #:open-log-file
    #:append-log-entry
    #:entry-at
    #:close-log-file
-   #:end-index))
+   #:end-index
+   #:append-log-entries-overwriting-stale))
 (in-package :bknr.cluster/log-file)
 
 (defconstant +tag+ #\L
@@ -39,12 +42,12 @@ to disregard the term.")
              :reader log-file-pathname)
    (stream :initarg :stream
            :reader log-file-stream)
-   (lock :initform (bt:make-lock)
+   (lock :initform (bt:make-recursive-lock)
          :reader lock)
    (start-index :initform 1
                 :reader start-index)
    (end-index :initform 1
-              :reader end-index)
+              :accessor end-index)
    (entries :initform (make-array 0 :adjustable 0
                                     :fill-pointer 0)
             :reader entries)))
@@ -57,43 +60,54 @@ to disregard the term.")
 
 (defmethod append-log-entry ((self log-file)
                              term
-                             data)
-  (let ((stream (log-file-stream self)))
-    (bt:with-lock-held ((lock self))
-      (goto-end self)
+                             data &key (at-end-p t))
+  (bt:with-recursive-lock-held ((lock self))
+    (let ((stream (log-file-stream self)))
+      (when at-end-p
+        (goto-end self))
+      (log:debug "Appending entry ~a at ~a" term (file-position stream))
       (%write-tag +tag+ stream )
       (encode term stream)
       (add-pos-to-entries self term)
       (encode data stream)
-      (finish-output stream))))
+      (finish-output stream)
+      (incf (end-index self)))))
 
 (defun add-pos-to-entries (self term)
   (let ((stream (log-file-stream self)))
    (vector-push-extend (make-entry :term term :pos (file-position stream))
                        (entries self))))
 
+(defmethod goto-entry-data-pos ((self log-file)
+                                index)
+  "moves the stream to the position for the data, and returns the term
+of the associated index as a convenience."
+  (let ((entry (aref (entries self) (- index (start-index self)))))
+    (goto-pos self (entry-pos entry))
+    (entry-term entry)))
+
 (defmethod entry-at ((self log-file)
                      index)
   (let ((stream (log-file-stream self)))
-   (bt:with-lock-held ((lock self))
-     (let ((entry (aref (entries self) (- index (start-index self)))))
-       (goto-pos self (entry-pos entry))
+   (bt:with-recursive-lock-held ((lock self))
+     (let ((term (goto-entry-data-pos self index)))
        (make-instance
         'log-entry
         :data (decode stream)
-        :term (entry-term entry))))))
+        :term term)))))
 
 (defmethod term-at ((self log-file)
                     index)
-  (cond
-    ((= index 0)
-     0)
-    (t
-     (when (and
-            (<= (start-index self) index)
-            (< index (end-index self)))
-       (let ((entry (aref (entries self) (- index (start-index self)))))
-         (entry-term entry))))))
+  (bt:with-recursive-lock-held ((lock self))
+   (cond
+     ((= index 0)
+      0)
+     (t
+      (when (and
+             (<= (start-index self) index)
+             (< index (end-index self)))
+        (let ((entry (aref (entries self) (- index (start-index self)))))
+          (entry-term entry)))))))
 
 (defun open-log-file (&key pathname (type 'log-file))
   (let ((log-file
@@ -137,3 +151,43 @@ to disregard the term.")
 (defmethod read-entries ((self log-file) start &optional end)
   (loop for i from start below (or end (end-index self))
         collect (entry-at self i)))
+
+(defun goto-end-of-index (self index)
+  "Move the file-position to the end of the item at index."
+  (cond
+    ((= 0 index)
+     (goto-pos self :start))
+    (t
+     (goto-entry-data-pos self index)
+     (decode (log-file-stream self)))))
+
+(defmethod append-log-entries-overwriting-stale ((self log-file)
+                                                 prev-log-index
+                                                 entries)
+  (block nil
+   (bt:with-recursive-lock-held ((lock self))
+     (loop for index from (1+ prev-log-index)
+           for entry in entries
+           for rest-entries on entries
+           do
+              (when (or
+                     (= index (end-index self))
+                     (not (eql (term-at self index) (term entry))))
+                (goto-end-of-index self (1- index))
+                (adjust-array
+                 (entries self)
+                 (1- index)
+                 :fill-pointer (1- index))
+                (%write-entries-now self
+                                    rest-entries)
+                (return-from nil nil))))))
+
+
+(defun %write-entries-now (self entries)
+  (loop for entry in entries
+        do
+           (append-log-entry
+            self
+            (term entry)
+            (entry-data entry)
+            :at-end-p nil)))

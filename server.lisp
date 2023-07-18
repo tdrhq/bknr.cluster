@@ -19,7 +19,11 @@
                 #:ignore-and-log-errors
                 #:make-thread)
   (:import-from #:bknr.cluster/log-file
-                #:open-log-file))
+                #:append-log-entries-overwriting-stale
+                #:term-at
+                #:open-log-file)
+  (:import-from #:bknr.cluster/rpc
+                #:prev-log-index))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -160,8 +164,16 @@
     (cond
       ((< (term append-entries) (current-term self))
        (respond nil))
-      ;; TODO: log stuff
+      ((not
+        (eql
+         (term-at (log-file self) (prev-log-index append-entries))
+         (prev-log-term append-entries)))
+       (respond nil))
       (t
+       (append-log-entries-overwriting-stale
+        (log-file self)
+        (prev-log-index append-entries)
+        (entries append-entries))
        (respond t)))))
 
 

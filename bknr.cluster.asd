@@ -4,6 +4,7 @@
   :depends-on (:bknr.datastore
                :cl-store
                :util/threading
+               :easy-macros
                :bordeaux-threads)
   :components ((:file "rpc")
                (:file "transport")

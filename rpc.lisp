@@ -25,7 +25,10 @@
    #:last-log-index
    #:last-log-term
    #:leader-id
-   #:successp))
+   #:successp
+   #:prev-log-term
+   #:prev-log-index
+   #:entries))
 (in-package :bknr.cluster/rpc)
 
 (defclass base-rpc-object ()
@@ -92,10 +95,13 @@
                :initform nil
                :reader leader-id)
     (prev-log-index :initarg :prev-log-index
+                    :reader prev-log-index
                     :initform nil)
     (prev-log-term :initarg :prev-log-term
+                   :reader prev-log-term
                    :initform nil)
     (entries :initarg :entries
+             :reader entries
              :initform nil)
     (leader-commit :initarg :leader-commit
                    :initform nil))))
@@ -115,6 +121,14 @@
            :reader term)
      (data :initarg :data
            :reader entry-data))))
+
+(defmethod print-object ((self log-entry) output)
+  (format output "#<LOG-ENTRY term:~a>" (term self)))
+
+(defun log-entry= (a b)
+  (and
+   (eql (term a) (term b))
+   (equalp (entry-data a) ( entry-data b))))
 
 (defmethod encode-object ((self base-rpc-object)
                           stream)

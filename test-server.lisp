@@ -8,13 +8,22 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:log-file
+                #:handle-rpc
                 #:commit-transaction
                 #:apply-transaction
                 #:state
                 #:start-up
                 #:state-machine
                 #:shutdown
-                #:peer))
+                #:peer)
+  (:import-from #:easy-macros
+                #:def-easy-macro)
+  (:import-from #:bknr.cluster/rpc
+                #:append-entries
+                #:log-entry)
+  (:import-from #:bknr.cluster/log-file
+                #:term-at))
 (in-package :bknr.cluster/test-server)
 
 (util/fiveam:def-suite)
@@ -26,7 +35,7 @@
 (defmethod commit-transaction ((self counter) (msg (eql :incr)))
   (incf (val self)))
 
-(def-fixture cluster (&key (num 3))
+(def-easy-macro with-peer-and-machines (&binding peers &binding machines &key (num 3) &fn fn)
   (tmpdir:with-tmpdir (dir)
    (let* ((peers (loop for i below num
                        for id from 0
@@ -40,10 +49,23 @@
                                                  :directory (path:catdir dir (format nil "~a/" id))
                                                  :peers peers
                                                  :this-peer peer))))
-     (mapc #'start-up machines)
-     (unwind-protect
-          (&body)
-       (mapc #'shutdown machines)))))
+     (fn peers machines))))
+
+
+(def-fixture cluster (&key (num 3))
+  (with-peer-and-machines (peers machines :num 3)
+    (mapc #'start-up machines)
+    (unwind-protect
+         (&body)
+      (mapc #'shutdown machines))))
+
+(def-fixture follower ()
+  (with-peer-and-machines (peers machines :num 3)
+    (let ((follower (first machines)))
+      (start-up follower)
+      (unwind-protect
+           (&body)
+        (shutdown follower)))))
 
 (defun find-leader (machines)
   (loop for machine in machines
@@ -74,3 +96,19 @@
       #+nil ;; todo
       (dolist (machine machines)
         (is (eql 1 (val machine)))))))
+
+(test handle-append-entries-on-empty-state
+  (with-fixture follower ()
+    (is-false (term-at (log-file follower) 1))
+    (handle-rpc follower
+                (make-instance 'append-entries
+                               :term 1
+                               :leader-id 2
+                               :prev-log-index 0
+                               :prev-log-term 0
+                               :entries (list
+                                         (make-instance 'log-entry
+                                                        :term 1
+                                                        :data #(1 2 3)))
+                               :leader-commit 0))
+    (is (eql 1 (term-at (log-file follower) 1)))))

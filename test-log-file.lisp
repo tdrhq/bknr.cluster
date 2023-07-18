@@ -8,6 +8,7 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/log-file
+                #:append-log-entries-overwriting-stale
                 #:log-file
                 #:ignore-decoding-errors
                 #:close-log-file
@@ -15,6 +16,8 @@
                 #:append-log-entry
                 #:open-log-file)
   (:import-from #:bknr.cluster/rpc
+                #:log-entry=
+                #:log-entry
                 #:term
                 #:entry-data))
 (in-package :bknr.cluster/test-log-file)
@@ -63,3 +66,81 @@
              (entry-at other 2)))
         (is (equalp #(3 2 1) (entry-data entry)))
         (is (eql 11 (term entry)))))))
+
+(test overwriting-stale
+  (with-fixture state ()
+    (let ((entry1 (make-instance 'log-entry
+                                 :term 10
+                                 :data #(1 2 3)))
+          (entry2 (make-instance 'log-entry
+                                 :term 11
+                                 :data #(1 2 3 4)))
+          (entry3 (make-instance 'log-entry
+                                 :term 12
+                                 :data #(1 2 3)))
+          (entry4 (make-instance 'log-entry
+                                 :term 12
+                                 :data #(1 2 3))))
+      (finishes
+        (append-log-entries-overwriting-stale log-file 0 (list entry1 entry2)))
+      (is (log-entry= entry1 (entry-at log-file 1)))
+      (is (log-entry= entry2 (entry-at log-file 2)))
+      (append-log-entries-overwriting-stale
+       log-file
+       1
+       (list entry3 entry4))
+      (is (log-entry= entry1 (entry-at log-file 1)))
+      (is (not (log-entry= entry2 (entry-at log-file 2))))
+      (is (log-entry= entry4 (entry-at log-file 3)))
+      (is (log-entry= entry3 (entry-at log-file 2))))))
+
+(test sending-all-again
+  (with-fixture state ()
+    (let ((entry1 (make-instance 'log-entry
+                                 :term 10
+                                 :data #(1 2 3)))
+          (entry2 (make-instance 'log-entry
+                                 :term 11
+                                 :data #(1 2 3 4)))
+          (entry3 (make-instance 'log-entry
+                                 :term 12
+                                 :data #(1 2 3)))
+          (entry4 (make-instance 'log-entry
+                                 :term 12
+                                 :data #(1 2 3))))
+      (finishes
+        (append-log-entries-overwriting-stale log-file 0 (list entry1 entry2)))
+      (is (log-entry= entry1 (entry-at log-file 1)))
+      (is (log-entry= entry2 (entry-at log-file 2)))
+      (append-log-entries-overwriting-stale
+       log-file
+       0
+       (list entry1 entry2 entry3))
+      (is (log-entry= entry1 (entry-at log-file 1)))
+      (is (log-entry= entry2 (entry-at log-file 2)))
+      (is (log-entry= entry3 (entry-at log-file 3))))))
+
+(test sending-same
+  (with-fixture state ()
+    (let ((entry1 (make-instance 'log-entry
+                                 :term 10
+                                 :data #(1 2 3)))
+          (entry2 (make-instance 'log-entry
+                                 :term 11
+                                 :data #(1 2 3 4)))
+          (entry3 (make-instance 'log-entry
+                                 :term 12
+                                 :data #(1 2 3)))
+          (entry4 (make-instance 'log-entry
+                                 :term 12
+                                 :data #(1 2 3))))
+      (finishes
+        (append-log-entries-overwriting-stale log-file 0 (list entry1 entry2)))
+      (is (log-entry= entry1 (entry-at log-file 1)))
+      (is (log-entry= entry2 (entry-at log-file 2)))
+      (append-log-entries-overwriting-stale
+       log-file
+       0
+       (list entry1))
+      (is (log-entry= entry1 (entry-at log-file 1)))
+      (is (log-entry= entry2 (entry-at log-file 2))))))
