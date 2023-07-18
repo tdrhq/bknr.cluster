@@ -6,7 +6,8 @@
                :util/threading
                :easy-macros
                :bordeaux-threads)
-  :components ((:file "rpc")
+  :components ((:file "util")
+               (:file "rpc")
                (:file "transport")
                (:file "log-file")
                (:file "server")

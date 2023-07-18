@@ -29,7 +29,9 @@
                 #:decode
                 #:encode)
   (:import-from #:bknr.cluster/rpc
-                #:append-entries))
+                #:append-entries)
+  (:import-from #:bknr.cluster/util
+                #:safely-ignore-errors))
 (in-package :bknr.cluster/leader)
 
 (defmethod leader-tick ((Self state-machine))
@@ -95,4 +97,5 @@
   (dotimes (i 2)
    (bt:make-thread
     (lambda ()
-      (funcall on-result)))))
+      (safely-ignore-errors ()
+       (funcall on-result))))))

@@ -9,6 +9,8 @@
   (:import-from #:bknr.datastore
                 #:decode
                 #:encode)
+  (:import-from #:bknr.cluster/util
+                #:safely-ignore-errors)
   (:export
    #:peer
    #:hostname
@@ -36,19 +38,17 @@
   ;; the thread for the connection.
   (bt:make-thread
    (lambda ()
-     (handler-case
-         (with-open-stream (stream (comm:open-tcp-stream (hostname peer) (port peer)
-                                                         :element-type '(unsigned-byte 8)
-                                                         :direction :io
-                                                         :read-timeout 1
-                                                         :write-timeout 1))
-           ;;(encode +protocol-version+ stream)
+     (safely-ignore-errors ()
+      (with-open-stream (stream (comm:open-tcp-stream (hostname peer) (port peer)
+                                                      :element-type '(unsigned-byte 8)
+                                                      :direction :io
+                                                      :read-timeout 1
+                                                      :write-timeout 1))
+        ;;(encode +protocol-version+ stream)
 
-           (encode body stream)
-           (finish-output stream)
-           (let ((response (decode stream)))
-             (funcall
-              (or on-result #'identity)
-              response)))
-       (error (e)
-         (log:error "Got error during transport: ~a" e))))))
+        (encode body stream)
+        (finish-output stream)
+        (let ((response (decode stream)))
+          (funcall
+           (or on-result #'identity)
+           response)))))))

@@ -23,7 +23,11 @@
                 #:term-at
                 #:open-log-file)
   (:import-from #:bknr.cluster/rpc
-                #:prev-log-index))
+                #:prev-log-index)
+  (:import-from #:easy-macros
+                #:def-easy-macro)
+  (:import-from #:bknr.cluster/util
+                #:safely-ignore-errors))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -31,7 +35,6 @@
 (defconstant +test-broadcast+ #\T)
 
 (defconstant +protocol-version+ 1)
-
 
 (defmethod peer-name ((self peer))
   (format nil "~a:~a" (hostname self) (port self)))
@@ -131,7 +134,7 @@
    "client thread"
    nil
    (lambda ()
-     (ignore-and-log-errors ()
+     (safely-ignore-errors ()
       (with-open-stream (stream (make-instance 'comm:socket-stream
                                                :socket socket
                                                :direction :io

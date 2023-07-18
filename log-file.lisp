@@ -16,6 +16,8 @@
                 #:entry-data
                 #:term
                 #:log-entry)
+  (:import-from #:bknr.cluster/util
+                #:safely-ignore-errors)
   (:export
    #:open-log-file
    #:append-log-entry
@@ -122,7 +124,7 @@ of the associated index as a convenience."
 
 (defmethod ignore-decoding-errors ((self log-file)
                                    fn)
-  (ignore-errors
+  (safely-ignore-errors ()
    (funcall fn)))
 
 (defmethod read-log-entries ((self log-file))
