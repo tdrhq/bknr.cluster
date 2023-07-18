@@ -85,11 +85,15 @@ to disregard the term.")
 
 (defmethod term-at ((self log-file)
                     index)
-  (when (and
-         (<= (start-index self) index)
-         (< index (end-index self)))
-    (let ((entry (aref (entries self) (- index (start-index self)))))
-      (entry-term entry))))
+  (cond
+    ((= index 0)
+     0)
+    (t
+     (when (and
+            (<= (start-index self) index)
+            (< index (end-index self)))
+       (let ((entry (aref (entries self) (- index (start-index self)))))
+         (entry-term entry))))))
 
 (defun open-log-file (&key pathname (type 'log-file))
   (let ((log-file
