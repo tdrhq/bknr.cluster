@@ -19,7 +19,6 @@
                 #:ignore-and-log-errors
                 #:make-thread)
   (:import-from #:bknr.cluster/log-file
-                #:append-log-entry
                 #:open-log-file))
 (in-package :bknr.cluster/server)
 
@@ -82,21 +81,8 @@
 
 (defgeneric commit-transaction (state-machine transaction))
 
-(defun encode-to-array (obj)
-  (let ((stream (flex:make-in-memory-output-stream)))
-    (encode obj stream)
-    (flex:get-output-stream-sequence stream)))
+(defgeneric apply-transaction (state-machine transaction))
 
-(defun decode-from-array (arr)
-  (let ((stream (flex:make-in-memory-input-stream arr)))
-    (decode stream)))
-
-(defmethod apply-transaction ((self state-machine) transaction)
-  (append-log-entry
-   (log-file self)
-   (current-term self)
-   (encode-to-array transaction))
-  (commit-transaction self transaction))
 
 (defmethod print-object ((self state-machine) output)
   (format output "#<FSM ~a>" (peer-id self)))
@@ -231,6 +217,8 @@
     (loop
       (main-process-tick self))))
 
+(defgeneric leader-tick (state-machine))
+
 (defmethod main-process-tick ((self state-machine))
   (ecase (state self)
     (:follower
@@ -254,25 +242,6 @@
         (t
          (log:info "got message for ~a" peer-name))))))
 
-(defmethod leader-tick ((Self state-machine))
-  (let ((wakep (mp:condition-variable-wait (cv self) (lock self)
-                                           :timeout (/ (election-timeout self) 4))))
-    (send-heartbeat self)
-    (when wakep
-      (log:info "TODO: got woken up: ~a" self))))
-
-(defmethod send-heartbeat ((self state-machine))
-  (log:debug "Sending heartbeat: ~a" self)
-  (broadcast
-   self
-   (make-instance 'append-entries
-                  :term (current-term self)
-                  :leader-id (peer-id self)
-                  :entries nil)
-   :on-result (lambda (result)
-                (bt:with-lock-held ((lock self))
-                  (maybe-demote self result)))))
-
 (defmethod candidate-tick ((self state-machine))
   (let ((wakep (mp:condition-variable-wait (cv self) (lock self)
                                            :timeout (election-timeout self))))
@@ -280,6 +249,9 @@
       (wakep
        ;; Currently this doesn't happen until we implement AppendRPC.
        ))))
+
+(defun quorum (self)
+  (floor (length (peers self)) 2))
 
 (defmethod start-election ((self state-machine))
   (let ((vote-count 1))
@@ -302,7 +274,7 @@
                         (and (eql :candidate state)
                              (eql current-term (term result)))
                       (incf vote-count)
-                      (when (> vote-count (floor (length (peers self)) 2))
+                      (when (> vote-count (quorum self))
                         (log:info "Turning into leader! ~a" (peer-id self))
                         (setf state :leader)
                         (bt:condition-notify (cv self)))))))

@@ -75,6 +75,12 @@ to disregard the term.")
         (decode stream)
         (entry-term entry))))))
 
+(defmethod term-at ((self log-file)
+                    index)
+  (when (<= (length (entries self)))
+    (let ((entry (aref (entries self) (1- index))))
+      (entry-term entry))))
+
 (defun open-log-file (&key pathname (type 'log-file))
   (let ((log-file
           (make-instance type

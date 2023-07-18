@@ -30,7 +30,8 @@
 (defclass transport ()
   ())
 
-(defmethod send-message ((transport transport) (peer peer) body &key on-result)
+(defmethod send-message ((transport transport) (peer peer) body &key on-result
+                                                                  retryp)
   ;; TODO: cache the connection here, and dispatch the requesting to
   ;; the thread for the connection.
   (bt:make-thread
