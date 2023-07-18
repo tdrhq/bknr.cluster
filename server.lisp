@@ -52,6 +52,7 @@
                  :initform nil
                  :documentation "The process that does heartbeat, leadership election and such.")
    (transport :reader transport
+              :initarg :transport
               :initform (make-instance 'transport))
    (state :accessor state)
 

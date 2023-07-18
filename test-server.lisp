@@ -23,7 +23,11 @@
                 #:append-entries
                 #:log-entry)
   (:import-from #:bknr.cluster/log-file
-                #:term-at))
+                #:term-at)
+  (:import-from #:bknr.cluster/transport
+                #:transport)
+  (:export
+   #:with-peer-and-machines))
 (in-package :bknr.cluster/test-server)
 
 (util/fiveam:def-suite)
@@ -35,7 +39,8 @@
 (defmethod commit-transaction ((self counter) (msg (eql :incr)))
   (incf (val self)))
 
-(def-easy-macro with-peer-and-machines (&binding peers &binding machines &key (num 3) &fn fn)
+(def-easy-macro with-peer-and-machines (&binding peers &binding machines
+                                                 &key (num 3) (transport 'transport) &fn fn)
   (tmpdir:with-tmpdir (dir)
    (let* ((peers (loop for i below num
                        for id from 0
@@ -47,6 +52,7 @@
                           collect (make-instance 'counter
                                                  :election-timeout 0.1
                                                  :directory (path:catdir dir (format nil "~a/" id))
+                                                 :transport (make-instance transport)
                                                  :peers peers
                                                  :this-peer peer))))
      (fn peers machines))))

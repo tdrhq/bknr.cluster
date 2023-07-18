@@ -8,6 +8,7 @@
   (:use #:cl
         #:bknr.cluster/transport)
   (:import-from #:bknr.cluster/server
+                #:commit-index
                 #:quorum
                 #:apply-transaction
                 #:log-file
@@ -90,7 +91,8 @@
                     :prev-log-index prev-log-index
                     :prev-log-term (term-at (log-file self) prev-log-index)
                     :entries (read-entries (log-file self)
-                                           log-index))
+                                           log-index)
+                    :leader-commit (commit-index self))
      :on-result on-result)))
 
 (defun broadcast-append-entry (self data &key on-result)

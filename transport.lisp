@@ -32,6 +32,9 @@
 (defclass transport ()
   ())
 
+(defclass noop-transport ()
+  ())
+
 (defmethod send-message ((transport transport) (peer peer) body &key on-result
                                                                   retryp)
   ;; TODO: cache the connection here, and dispatch the requesting to
@@ -52,3 +55,6 @@
           (funcall
            (or on-result #'identity)
            response)))))))
+
+(defmethod send-message ((transport noop-transport) peer body &key &allow-other-keys)
+  (values))
