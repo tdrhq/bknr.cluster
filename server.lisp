@@ -36,8 +36,43 @@
 
 (defconstant +protocol-version+ 1)
 
+(defparameter *so-file*  #. (asdf:output-file 'asdf:compile-op (asdf:find-component :bknr.cluster "braft_compat")))
+
+(fli:register-module
+ :braft
+ :connection-style :immediate
+ :real-name
+ "/usr/local/lib/libbraft.so")
+
+(fli:register-module
+ :braft
+ :connection-style :immediate
+ :real-name
+ "/usr/local/lib/libbraft.so")
+
+(fli:register-module
+ :braft-compat
+ :connection-style :immediate
+ :file-name
+ *so-file*)
+
+(defun reload-native ()
+  (progn
+    (fli:disconnect-module :braft-compat)
+    (asdf:compile-system :bknr.cluster)))
+
 (defmethod peer-name ((self peer))
   (format nil "~a:~a" (hostname self) (port self)))
+
+(fli:define-c-struct state-machine
+  :int)
+
+(fli:define-foreign-function make-bknr-state-machine
+    ((handle :int))
+  :result-type (:pointer state-machine)
+  :module :braft-compat)
+
+(make-bknr-state-machine 0)
 
 (defclass state-machine ()
   ((peers :initarg :peers

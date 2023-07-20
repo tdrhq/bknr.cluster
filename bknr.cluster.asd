@@ -16,12 +16,13 @@
   (uiop:run-program
    (list
     "g++"
-    "-shared"
-    "-fPIC"
-    "-lbrpc" "-lbraft" "-lgflags"
     (namestring (component-pathname cpp))
     "-o"
-    (namestring (output-file o cpp)))
+    (namestring (output-file o cpp))
+    "-shared"
+    "-fPIC"
+    "-Wall"
+    "-lbraft")
    :error-output t
    :standard-output t))
 

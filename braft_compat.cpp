@@ -19,6 +19,11 @@ namespace bknr {
   };
 
 
+
+
+
+
+
   extern "C" {
     BknrStateMachine* make_bknr_state_machine(int lispHandle) {
       return new BknrStateMachine(lispHandle);
