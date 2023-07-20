@@ -64,12 +64,12 @@
 (defmethod peer-name ((self peer))
   (format nil "~a:~a" (hostname self) (port self)))
 
-(fli:define-c-struct state-machine
+(fli:define-c-struct bknr-state-machine
   (foo :int))
 
 (fli:define-foreign-function make-bknr-state-machine
     ((handle :int))
-  :result-type (:pointer state-machine)
+  :result-type (:pointer bknr-state-machine)
   :module :braft-compat)
 
 (defvar *next-handle* 1)
@@ -87,6 +87,48 @@
         self)
   (setf (c-state-machine self)
         (make-bknr-state-machine (handle self))))
+
+(fli:define-foreign-function start-bknr-state-machine
+    ((sm (:pointer bknr-state-machine))
+     (ip (:reference-pass :ef-mb-string))
+     (port :int)
+     (config (:reference-pass :ef-mb-string))
+     (election-timeout-ms :int)
+     (snapshot-interval :int)
+     (data-path (:reference-pass :ef-mb-string))
+     (group (:reference-pass :ef-mb-string)))
+  :result-type :int)
+
+(fli:define-foreign-function stop-bknr-state-machine
+    ((sm (:pointer bknr-state-machine)))
+  :result-type :void)
+
+(defmethod start-state-machine ((self lisp-state-machine)
+                                &key
+                                  (ip "127.0.0.1")
+                                  (port 9090)
+                                config
+                                  (election-timeout-ms 1000)
+                                  (snapshot-interval (* 24 30 60))
+                                  data-path
+                                  group)
+  (let ((res (start-bknr-state-machine
+              (c-state-machine self)
+              ip
+              port
+              config
+              election-timeout-ms
+              snapshot-interval
+              (namestring data-path)
+              group)))
+   (unless (= 0 res)
+     (error "Failed to start, got: ~a" res))))
+
+
+(defmethod stop-state-machine ((self lisp-state-machine))
+  (stop-bknr-state-machine
+   (c-state-machine self)))
+
 
 (fli:define-foreign-converter lisp-state-machine ()
   h

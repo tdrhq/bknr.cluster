@@ -8,6 +8,8 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:stop-state-machine
+                #:start-state-machine
                 #:lisp-state-machine
                 #:log-file
                 #:handle-rpc
@@ -27,6 +29,8 @@
                 #:term-at)
   (:import-from #:bknr.cluster/transport
                 #:transport)
+  (:import-from #:util/random-port
+                #:random-port)
   (:export
    #:with-peer-and-machines))
 (in-package :bknr.cluster/test-server)
@@ -122,3 +126,22 @@
 
 (test make-lisp-state-machine
   (make-instance 'lisp-state-machine))
+
+
+(defclass my-state-machine (lisp-state-machine)
+  ())
+
+(test start-lisp-state-machine
+  (tmpdir:with-tmpdir (dir)
+    (let ((port (random-port))
+          (self (make-instance 'my-state-machine)))
+      (log:info "Using port: ~a" port)
+     (start-state-machine
+      self
+      :port port
+      :config (format nil "127.0.0.1:~a:0" port)
+      :data-path dir
+      :group "foobar")
+      (sleep 0.1) ;; todo: apply some transactions here.
+      (stop-state-machine self)
+      (pass))))
