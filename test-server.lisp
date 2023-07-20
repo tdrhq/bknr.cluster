@@ -8,6 +8,7 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:lisp-state-machine
                 #:log-file
                 #:handle-rpc
                 #:commit-transaction
@@ -118,3 +119,6 @@
                                                         :data #(1 2 3)))
                                :leader-commit 0))
     (is (eql 1 (term-at (log-file follower) 1)))))
+
+(test make-lisp-state-machine
+  (make-instance 'lisp-state-machine))

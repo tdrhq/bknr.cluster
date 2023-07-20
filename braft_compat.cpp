@@ -8,24 +8,21 @@
 #include <braft/protobuf_file.h>         // braft::ProtoBufFile
 
 namespace bknr {
+
+  typedef int lisp_state_machine;
+
   class BknrStateMachine : public braft::StateMachine {
-    int lispHandle;
+    lisp_state_machine lispHandle;
   public:
-    BknrStateMachine (int _lispHandle) : lispHandle(_lispHandle) {
+    BknrStateMachine (lisp_state_machine  _lispHandle) : lispHandle(_lispHandle) {
     }
 
     void on_apply(::braft::Iterator& iter) {
     }
   };
 
-
-
-
-
-
-
   extern "C" {
-    BknrStateMachine* make_bknr_state_machine(int lispHandle) {
+    BknrStateMachine* make_bknr_state_machine(lisp_state_machine lispHandle) {
       return new BknrStateMachine(lispHandle);
     }
   }

@@ -65,14 +65,35 @@
   (format nil "~a:~a" (hostname self) (port self)))
 
 (fli:define-c-struct state-machine
-  :int)
+  (foo :int))
 
 (fli:define-foreign-function make-bknr-state-machine
     ((handle :int))
   :result-type (:pointer state-machine)
   :module :braft-compat)
 
-(make-bknr-state-machine 0)
+(defvar *next-handle* 1)
+
+(defclass lisp-state-machine ()
+  ((handle :reader handle
+           :initform (atomics:atomic-incf *next-handle*))
+   (c-state-machine
+    :accessor c-state-machine)))
+
+(defvar *state-machine-hash* (make-hash-table))
+
+(defmethod initialize-instance :after ((self lisp-state-machine) &key)
+  (setf (gethash (handle self) *state-machine-hash*)
+        self)
+  (setf (c-state-machine self)
+        (make-bknr-state-machine (handle self))))
+
+(fli:define-foreign-converter lisp-state-machine ()
+  h
+  :foreign-type :int
+  :foreign-to-lisp `(gethash ,h *state-machine-hash*)
+  :lisp-to-foreign `(handle ,h))
+
 
 (defclass state-machine ()
   ((peers :initarg :peers
