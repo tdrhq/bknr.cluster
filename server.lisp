@@ -60,10 +60,21 @@
     (foo :int))
 
 (fli:define-c-struct io-buf
+    (foo :int))
+
+(fli:define-c-struct closure
+    (foo :int))
+
+(fli:define-c-struct snapshot-writer
+    (foo :int))
+
+(fli:define-c-struct snapshot-reader
   (foo :int))
 
 (fli:define-foreign-function make-bknr-state-machine
-    ((on-apply-callback :pointer))
+    ((on-apply-callback :pointer)
+     (on-snapshot-save :pointer)
+     (on-snapshot-load :pointer))
   :result-type (:pointer bknr-state-machine)
   :module :braft-compat)
 
@@ -75,6 +86,10 @@
     ((iobuf (:pointer io-buf))
      (ptr :lisp-simple-1d-array)
      (len :int))
+  :result-type :void)
+
+(fli:define-foreign-function bknr-closure-run
+    ((closure (:pointer closure)))
   :result-type :void)
 
 (fli:define-foreign-callable
@@ -165,8 +180,11 @@
       (error "Failed to start, got: ~a" res))))
 
 (defun allocate-fli (self)
-  (let ((fli (make-bknr-state-machine
-              (fli:make-pointer :symbol-name 'bknr-on-apply-callback))))
+  (let ((fli (apply #'make-bknr-state-machine
+                    (loop for callback in '(bknr-on-apply-callback
+                                            bknr-snapshot-save
+                                            bknr-snapshot-load)
+                          collect (fli:make-pointer :symbol-name callback)))))
     (setf (c-state-machine self) fli)
     (setf (gethash fli *state-machine-reverse-hash*)
           self)))
@@ -189,6 +207,7 @@
      (callback-handle :int))
   :result-type :void)
 
+
 (fli:define-foreign-callable (bknr-apply-transaction-callback
                               :result-type :void)
     ((sm lisp-state-machine)
@@ -206,7 +225,18 @@
          (log:info "Got lock")
          (when cv
            (log:info "Got cv: ~a" cv)
-          (bt:condition-notify cv)))))))
+           (bt:condition-notify cv)))))))
+
+(fli:define-foreign-callable (bknr-snapshot-save
+                              :result-type :void)
+    ((sm lisp-state-machine)
+     (snapshot-writer (:pointer snapshot-writer))
+     (done (:pointer closure))))
+
+(fli:define-foreign-callable (bknr-snapshot-load
+                              :result-type :void)
+    ((sm lisp-state-machine)
+     (snapshot-reader (:pointer snapshot-reader))))
 
 (defgeneric commit-transaction (state-machine transaction))
 

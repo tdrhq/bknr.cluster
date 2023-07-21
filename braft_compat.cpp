@@ -39,10 +39,27 @@ private:
                                butil::IOBuf* data,
                                int datalen);
 
+  typedef void OnSnapshotSave(BknrStateMachine* fsm,
+                              braft::SnapshotWriter* writer,
+                              braft::Closure* done);
+
+  typedef void OnSnapshotLoad(BknrStateMachine* fsm,
+                              braft::SnapshotReader* reader);
+
   class BknrStateMachine : public braft::StateMachine {
     OnApplyCallback* _on_apply_callback;
+    OnSnapshotSave* _on_snapshot_save;
+    OnSnapshotLoad* _on_snapshot_load;
+
   public:
-    BknrStateMachine (OnApplyCallback on_apply_callback) : _on_apply_callback(on_apply_callback), _node(NULL) {
+    BknrStateMachine (
+      OnApplyCallback* on_apply_callback,
+      OnSnapshotSave* on_snapshot_save,
+      OnSnapshotLoad* on_snapshot_load
+      ) : _on_apply_callback(on_apply_callback),
+          _on_snapshot_save(on_snapshot_save),
+          _on_snapshot_load(on_snapshot_load),
+          _node(NULL) {
     }
 
     void on_apply(::braft::Iterator& iter) {
@@ -154,8 +171,12 @@ private:
   }
 
   extern "C" {
-    BknrStateMachine* make_bknr_state_machine(OnApplyCallback* on_apply_callback) {
-      return new BknrStateMachine(on_apply_callback);
+    BknrStateMachine* make_bknr_state_machine(OnApplyCallback* on_apply_callback,
+                                              OnSnapshotSave* on_snapshot_save,
+                                              OnSnapshotLoad* on_snapshot_load) {
+      return new BknrStateMachine(on_apply_callback,
+                                  on_snapshot_save,
+                                  on_snapshot_load);
     }
 
     void destroy_bknr_state_machine(BknrStateMachine* fsm) {
@@ -206,6 +227,14 @@ private:
     void bknr_iobuf_copy_to(butil::IOBuf* buf, void* arr, int len) {
       LOG(INFO) << "Copying IOBuf";
       buf->copy_to(arr, len);
+    }
+
+    void bknr_closure_run(google::protobuf::Closure *closure) {
+      closure->Run();
+    }
+
+    void bknr_closure_set_error(braft::Closure *closure, int error, const char* msg) {
+      closure->status().set_error(error, msg);
     }
   }
 }
