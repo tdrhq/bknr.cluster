@@ -178,6 +178,8 @@
   (remhash (c-state-machine self) *state-machine-reverse-hash*)
   (destroy-bknr-state-machine (c-state-machine self)))
 
+(defvar *cv-map* (make-hash-table :weak-kind :value))
+(defvar *next-cv-handle* 0)
 
 (fli:define-foreign-function bknr-apply-transaction
     ((sm lisp-state-machine)
@@ -193,11 +195,18 @@
      (callback-handle :int)
      (success :int)
      (msg (:pointer :char)))
+  (declare (ignore sm))
   (cond
     ((zerop success)
      (log:error "Got result: ~a" (fli:convert-from-foreign-string msg)))
     (t
-     (log:info "transaction callback unimpl"))))
+     (log:info "Result on thread: ~a" (bt:current-thread))
+     (let ((cv (gethash callback-handle *cv-map*)))
+       (bt:with-lock-held (*lock*)
+         (log:info "Got lock")
+         (when cv
+           (log:info "Got cv: ~a" cv)
+          (bt:condition-notify cv)))))))
 
 (defgeneric commit-transaction (state-machine transaction))
 
@@ -219,10 +228,18 @@
                               :element-type '(unsigned-byte 8)
                               :adjustable nil
                               :initial-contents data
-                              :allocation :static)))
-       (bknr-apply-transaction
-        self
-        copy
-        (length copy)
-        (fli:make-pointer :symbol-name 'bknr-apply-transaction-callback)
-        0)))))
+                              :allocation :static))
+            (cv-handle (atomics:atomic-incf *next-cv-handle*))
+            (cv (bt:make-condition-variable)))
+        (setf (gethash cv-handle *cv-map*)
+              cv)
+
+        (log:info "Calling from thread: ~a" (bt:current-thread))
+        (bt:with-lock-held (*lock*)
+          (bknr-apply-transaction
+           self
+           copy
+           (length copy)
+           (fli:make-pointer :symbol-name 'bknr-apply-transaction-callback)
+           cv-handle)
+          (bt:condition-wait cv *lock*))))))

@@ -91,14 +91,14 @@
      (wait-for-leader machines))))
 
 (test simple-transaction
-  (with-fixture cluster ()
-    (let ((leader (wait-for-leader machines)))
-      (apply-transaction leader :incr)
-      (sleep 1)
-      (is (eql 1 (val leader)))
-      #+nil ;; todo
-      (dolist (machine machines)
-        (is (eql 1 (val machine)))))))
+  (dotimes (i 2)
+    (with-fixture cluster ()
+      (let ((leader (wait-for-leader machines)))
+        (apply-transaction leader :incr)
+        (is (eql 1 (val leader)))
+        #+nil ;; todo
+        (dolist (machine machines)
+          (is (eql 1 (val machine))))))))
 
 
 (test make-lisp-state-machine
