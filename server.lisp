@@ -40,6 +40,8 @@
  :file-name
  *so-file*)
 
+(defvar *lock* (bt:make-lock))
+
 (defun reload-native ()
   (progn
     (fli:disconnect-module :braft-compat)
@@ -139,4 +141,5 @@
 
 (defgeneric commit-transaction (state-machine transaction))
 
-(defgeneric apply-transaction (state-machine transaction))
+(defgeneric apply-transaction (state-machine transaction)
+  )

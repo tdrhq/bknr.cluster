@@ -11,11 +11,34 @@
 namespace bknr {
 
   using std::string;
+
+
   typedef int lisp_state_machine;
+  typedef void transaction_callback(lisp_state_machine handle, int callback_handle, bool success,
+                                    const char* status_message);
+
+  class BknrStateMachine;
+
+  class BknrClosure : public braft::Closure {
+  public:
+    BknrClosure(BknrStateMachine* fsm,
+                int callbackHandle,
+                transaction_callback* callback)
+      : _callback(callback),
+        _callbackHandle(callbackHandle),
+        _fsm(fsm)
+    {}
+
+    void Run();
+private:
+    BknrStateMachine* _fsm;
+    transaction_callback* _callback;
+    int _callbackHandle;
+  };
 
   class BknrStateMachine : public braft::StateMachine {
-    lisp_state_machine lispHandle;
   public:
+    lisp_state_machine lispHandle;
     BknrStateMachine (lisp_state_machine  _lispHandle) : lispHandle(_lispHandle), _node(NULL) {
     }
 
@@ -67,11 +90,62 @@ namespace bknr {
       }
     }
 
+    void on_leader_start(int64_t term) {
+        _leader_term.store(term, butil::memory_order_release);
+        LOG(INFO) << "Node becomes leader";
+    }
+
+    void on_leader_stop(const butil::Status& status) {
+        _leader_term.store(-1, butil::memory_order_release);
+        LOG(INFO) << "Node stepped down : " << status;
+    }
+
+    butil::atomic<int64_t> _leader_term;
+
+    void apply(const char* data, int data_len, transaction_callback* callback, int callbackHandle) {
+      // Serialize request to the replicated write-ahead-log so that all the
+      // peers in the group receive this request as well.
+      // Notice that _value can't be modified in this routine otherwise it
+      // will be inconsistent with others in this group.
+
+      // Serialize request to IOBuf
+      const int64_t term = _leader_term.load(butil::memory_order_relaxed);
+      /*
+        This logic was copied from examples, but our logic for
+        switching servers is different.
+        if (term < 0) { return
+        redirect(response); } */
+      butil::IOBuf log;
+      log.append(data, data_len);
+
+      // Apply this log as a braft::Task
+      braft::Task task;
+      task.data = &log;
+      // This callback would be iovoked when the task actually excuted or
+      // fail
+      task.done = new BknrClosure(this, callbackHandle, callback);
+      if (true /*FLAGS_check_term*/) {
+        // ABA problem can be avoid if expected_term is set
+        task.expected_term = term;
+      }
+      // Now the task is applied to the group, waiting for the result.
+      return _node->apply(task);
+    }
+
   public:
     brpc::Server _server;
     braft::Node* _node;
   private:
   };
+
+  void BknrClosure::Run() {
+    if (status().ok()) {
+      (*_callback)(_fsm->lispHandle,
+                _callbackHandle,
+                status().ok(),
+                status().error_cstr());
+    }
+  }
 
   extern "C" {
     BknrStateMachine* make_bknr_state_machine(lisp_state_machine lispHandle) {
@@ -110,6 +184,13 @@ namespace bknr {
 
     bool bknr_is_leader(BknrStateMachine* fsm) {
       return fsm->_node->is_leader();
+    }
+
+
+    void bknr_apply_transaction(BknrStateMachine* fsm, const char* data, int data_len, transaction_callback* callback,
+                                int callbackHandle) {
+      fsm->apply(data, data_len, callback,
+                 callbackHandle);
     }
   }
 }
