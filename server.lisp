@@ -51,16 +51,18 @@
   (foo :int))
 
 (fli:define-foreign-function make-bknr-state-machine
-    ((handle :int))
+    ()
   :result-type (:pointer bknr-state-machine)
   :module :braft-compat)
+
+(fli:define-foreign-function destroy-bknr-state-machine
+    ((fsm (:pointer bknr-state-machine)))
+  :result-type :void)
 
 (defvar *next-handle* 1)
 
 (defclass lisp-state-machine ()
-  ((handle :reader handle
-           :initform (atomics:atomic-incf *next-handle*))
-   (c-state-machine
+  ((c-state-machine
     :accessor c-state-machine)
    (ip :initarg :ip
        :initform "127.0.0.1")
@@ -76,13 +78,10 @@
    (group :initarg :group
           :reader group)))
 
-(defvar *state-machine-hash* (make-hash-table))
+(defvar *state-machine-reverse-hash* (make-hash-table :test #'equalp :weak-kind :value))
 
-(defmethod initialize-instance :after ((self lisp-state-machine) &key)
-  (setf (gethash (handle self) *state-machine-hash*)
-        self)
-  (setf (c-state-machine self)
-        (make-bknr-state-machine (handle self))))
+
+(defmethod initialize-instance :after ((self lisp-state-machine) &key))
 
 (fli:define-foreign-function start-bknr-state-machine
     ((sm (:pointer bknr-state-machine))
@@ -107,6 +106,7 @@
   (bknr-is-leader (c-state-machine self)))
 
 (defmethod start-up ((self lisp-state-machine))
+  (allocate-fli self)
   (let ((res (apply #'start-bknr-state-machine
                     (c-state-machine self)
                     (loop for slot in '(ip
@@ -124,19 +124,27 @@
                               (t
                                res)))))))
     (unless (= 0 res)
-     (error "Failed to start, got: ~a" res))))
+      (error "Failed to start, got: ~a" res))))
+
+(defun allocate-fli (self)
+  (let ((fli (make-bknr-state-machine)))
+    (setf (c-state-machine self) fli)
+    (setf (gethash fli *state-machine-reverse-hash*)
+          self)))
 
 
 (defmethod shutdown ((self lisp-state-machine))
   (stop-bknr-state-machine
-   (c-state-machine self)))
+   (c-state-machine self))
+  (remhash (c-state-machine self) *state-machine-reverse-hash*)
+  (destroy-bknr-state-machine (c-state-machine self)))
 
 
 (fli:define-foreign-converter lisp-state-machine ()
   h
   :foreign-type :int
-  :foreign-to-lisp `(gethash ,h *state-machine-hash*)
-  :lisp-to-foreign `(handle ,h))
+  :foreign-to-lisp `(gethash ,h *state-machine-reverse-hash*)
+  :lisp-to-foreign `(c-state-machine ,h))
 
 
 (defgeneric commit-transaction (state-machine transaction))

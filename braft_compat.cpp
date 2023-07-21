@@ -13,20 +13,19 @@ namespace bknr {
   using std::string;
 
 
-  typedef int lisp_state_machine;
-  typedef void transaction_callback(lisp_state_machine handle, int callback_handle, bool success,
-                                    const char* status_message);
-
   class BknrStateMachine;
+
+  typedef void transaction_callback(BknrStateMachine* fsm, int callback_handle, bool success,
+                                    const char* status_message);
 
   class BknrClosure : public braft::Closure {
   public:
     BknrClosure(BknrStateMachine* fsm,
                 int callbackHandle,
                 transaction_callback* callback)
-      : _callback(callback),
-        _callbackHandle(callbackHandle),
-        _fsm(fsm)
+      : _fsm(fsm),
+        _callback(callback),
+        _callbackHandle(callbackHandle)
     {}
 
     void Run();
@@ -38,8 +37,7 @@ private:
 
   class BknrStateMachine : public braft::StateMachine {
   public:
-    lisp_state_machine lispHandle;
-    BknrStateMachine (lisp_state_machine  _lispHandle) : lispHandle(_lispHandle), _node(NULL) {
+    BknrStateMachine () : _node(NULL) {
     }
 
     void on_apply(::braft::Iterator& iter) {
@@ -140,7 +138,7 @@ private:
 
   void BknrClosure::Run() {
     if (status().ok()) {
-      (*_callback)(_fsm->lispHandle,
+      (*_callback)(_fsm,
                 _callbackHandle,
                 status().ok(),
                 status().error_cstr());
@@ -148,8 +146,12 @@ private:
   }
 
   extern "C" {
-    BknrStateMachine* make_bknr_state_machine(lisp_state_machine lispHandle) {
-      return new BknrStateMachine(lispHandle);
+    BknrStateMachine* make_bknr_state_machine() {
+      return new BknrStateMachine();
+    }
+
+    void destroy_bknr_state_machine(BknrStateMachine* fsm) {
+      delete fsm;
     }
 
     int start_bknr_state_machine(BknrStateMachine* fsm,
