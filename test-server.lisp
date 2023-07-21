@@ -96,9 +96,16 @@
       (let ((leader (wait-for-leader machines)))
         (apply-transaction leader :incr)
         (is (eql 1 (val leader)))
-        #+nil ;; todo
-        (dolist (machine machines)
-          (is (eql 1 (val machine))))))))
+        (flet ((count-replicated ()
+                 (loop for machine in machines
+                       if (eql 1 (val machine))
+                          summing 1)))
+          (loop for i from 0 to 100
+                if (= (count-replicated) 3)
+                  return (pass)
+                else
+                  do
+                     (sleep 0.1)))))))
 
 
 (test make-lisp-state-machine

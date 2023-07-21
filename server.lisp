@@ -242,4 +242,5 @@
            (length copy)
            (fli:make-pointer :symbol-name 'bknr-apply-transaction-callback)
            cv-handle)
-          (bt:condition-wait cv *lock*))))))
+          (unless (mp:condition-variable-wait cv *lock* :timeout 30)
+            (error "Transaction failed to apply in time")))))))
