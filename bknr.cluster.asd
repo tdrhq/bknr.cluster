@@ -39,12 +39,7 @@
                :easy-macros
                :bordeaux-threads)
   :components ((braft-cpp-library "braft_compat")
-               (:file "util")
-               (:file "rpc")
-               (:file "transport")
-               (:file "log-file")
-               (:file "server")
-               (:file "leader")))
+               (:file "server")))
 
 
 #+lispworks
@@ -52,6 +47,4 @@
   :serial t
   :depends-on (#:bknr.cluster
                #:util/fiveam)
-  :components ((:file "test-rpc")
-               (:file "test-log-file")
-               (:file "test-server")))
+  :components ((:file "test-server")))

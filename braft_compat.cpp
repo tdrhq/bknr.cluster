@@ -69,8 +69,8 @@ namespace bknr {
 
   public:
     brpc::Server _server;
-  private:
     braft::Node* _node;
+  private:
   };
 
   extern "C" {
@@ -106,6 +106,10 @@ namespace bknr {
       fsm->shutdown();
       fsm->join();
       fsm->_server.Stop(0);
+    }
+
+    bool bknr_is_leader(BknrStateMachine* fsm) {
+      return fsm->_node->is_leader();
     }
   }
 }
