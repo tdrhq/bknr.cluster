@@ -30,6 +30,7 @@
         :initform 0)))
 
 (defmethod commit-transaction ((self counter) (msg (eql :incr)))
+  (log:info "running transaction")
   (incf (val self)))
 
 (def-easy-macro with-peer-and-machines (&binding ports &binding machines
@@ -68,6 +69,7 @@
         (shutdown follower)))))
 
 (defun find-leader (machines)
+  (log:info "Got state: ~s" (mapcar #'leaderp machines))
   (loop for machine in machines
         if (leaderp machine)
           return machine))
@@ -88,11 +90,11 @@
     (is-true
      (wait-for-leader machines))))
 
-#+nil
 (test simple-transaction
   (with-fixture cluster ()
     (let ((leader (wait-for-leader machines)))
       (apply-transaction leader :incr)
+      (sleep 1)
       (is (eql 1 (val leader)))
       #+nil ;; todo
       (dolist (machine machines)

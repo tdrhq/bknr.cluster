@@ -17,7 +17,9 @@
                 #:ignore-and-log-errors
                 #:make-thread)
   (:import-from #:easy-macros
-                #:def-easy-macro))
+                #:def-easy-macro)
+  (:import-from #:flexi-streams
+                #:vector-output-stream))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -42,22 +44,58 @@
 
 (defvar *lock* (bt:make-lock))
 
+(fli:define-foreign-converter lisp-state-machine ()
+  h
+  :foreign-type '(:pointer bknr-state-machine)
+  :foreign-to-lisp `(gethash ,h *state-machine-reverse-hash*)
+  :lisp-to-foreign `(c-state-machine ,h))
+
+
 (defun reload-native ()
   (progn
     (fli:disconnect-module :braft-compat)
     (asdf:compile-system :bknr.cluster)))
 
 (fli:define-c-struct bknr-state-machine
+    (foo :int))
+
+(fli:define-c-struct io-buf
   (foo :int))
 
 (fli:define-foreign-function make-bknr-state-machine
-    ()
+    ((on-apply-callback :pointer))
   :result-type (:pointer bknr-state-machine)
   :module :braft-compat)
 
 (fli:define-foreign-function destroy-bknr-state-machine
     ((fsm (:pointer bknr-state-machine)))
   :result-type :void)
+
+(fli:define-foreign-function bknr-iobuf-copy-to
+    ((iobuf (:pointer io-buf))
+     (ptr :lisp-simple-1d-array)
+     (len :int))
+  :result-type :void)
+
+(fli:define-foreign-callable
+    (bknr-on-apply-callback :result-type :void)
+    ((fsm lisp-state-machine)
+     (iobuf (:pointer io-buf))
+     (data-len :int))
+  (log:info "in on-apply-callable")
+  (let ((arr (make-array data-len
+                         :element-type '(unsigned-byte 8)
+                         :allocation :static)))
+    (log:info "going to copy")
+    (bknr-iobuf-copy-to
+     iobuf
+     arr
+     data-len)
+    (log:info "calling commit transaction")
+
+    (commit-transaction
+     fsm
+     (decode (flex:make-in-memory-input-stream arr)))))
 
 (defvar *next-handle* 1)
 
@@ -100,10 +138,10 @@
 
 (fli:define-foreign-function bknr-is-leader
     ((sm (:pointer bknr-state-machine)))
-  :result-type :boolean)
+  :result-type :int)
 
 (defmethod leaderp ((self lisp-state-machine))
-  (bknr-is-leader (c-state-machine self)))
+  (not (zerop (bknr-is-leader (c-state-machine self)))))
 
 (defmethod start-up ((self lisp-state-machine))
   (allocate-fli self)
@@ -127,7 +165,8 @@
       (error "Failed to start, got: ~a" res))))
 
 (defun allocate-fli (self)
-  (let ((fli (make-bknr-state-machine)))
+  (let ((fli (make-bknr-state-machine
+              (fli:make-pointer :symbol-name 'bknr-on-apply-callback))))
     (setf (c-state-machine self) fli)
     (setf (gethash fli *state-machine-reverse-hash*)
           self)))
@@ -140,14 +179,50 @@
   (destroy-bknr-state-machine (c-state-machine self)))
 
 
-(fli:define-foreign-converter lisp-state-machine ()
-  h
-  :foreign-type :int
-  :foreign-to-lisp `(gethash ,h *state-machine-reverse-hash*)
-  :lisp-to-foreign `(c-state-machine ,h))
+(fli:define-foreign-function bknr-apply-transaction
+    ((sm lisp-state-machine)
+     (data :lisp-simple-1d-array )
+     (data-len :int)
+     (callback :pointer)
+     (callback-handle :int))
+  :result-type :void)
 
+(fli:define-foreign-callable (bknr-apply-transaction-callback
+                              :result-type :void)
+    ((sm lisp-state-machine)
+     (callback-handle :int)
+     (success :int)
+     (msg (:pointer :char)))
+  (cond
+    ((zerop success)
+     (log:error "Got result: ~a" (fli:convert-from-foreign-string msg)))
+    (t
+     (log:info "transaction callback unimpl"))))
 
 (defgeneric commit-transaction (state-machine transaction))
 
-(defgeneric apply-transaction (state-machine transaction)
-  )
+(defmethod commit-transaction :around (sm trans)
+  (handler-bind ((error (lambda (e)
+                          (log:info "Got error: ~a" e)
+                          (dbg:output-backtrace :verbose e))))
+    (call-next-method)))
+
+(defgeneric apply-transaction (state-machine transaction))
+
+(defmethod apply-transaction ((self lisp-state-machine)
+                              transaction)
+  (let* ((stream (flex:make-in-memory-output-stream)))
+    (encode transaction stream)
+
+    (let ((data (flex:get-output-stream-sequence stream)))
+      (let ((copy (make-array (length data)
+                              :element-type '(unsigned-byte 8)
+                              :adjustable nil
+                              :initial-contents data
+                              :allocation :static)))
+       (bknr-apply-transaction
+        self
+        copy
+        (length copy)
+        (fli:make-pointer :symbol-name 'bknr-apply-transaction-callback)
+        0)))))

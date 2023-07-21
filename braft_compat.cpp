@@ -15,7 +15,7 @@ namespace bknr {
 
   class BknrStateMachine;
 
-  typedef void transaction_callback(BknrStateMachine* fsm, int callback_handle, bool success,
+  typedef void transaction_callback(BknrStateMachine* fsm, int callback_handle, int success,
                                     const char* status_message);
 
   class BknrClosure : public braft::Closure {
@@ -35,12 +35,26 @@ private:
     int _callbackHandle;
   };
 
+  typedef void OnApplyCallback(BknrStateMachine* fsm,
+                               butil::IOBuf* data,
+                               int datalen);
+
   class BknrStateMachine : public braft::StateMachine {
+    OnApplyCallback* _on_apply_callback;
   public:
-    BknrStateMachine () : _node(NULL) {
+    BknrStateMachine (OnApplyCallback on_apply_callback) : _on_apply_callback(on_apply_callback), _node(NULL) {
     }
 
     void on_apply(::braft::Iterator& iter) {
+      for (; iter.valid(); iter.next()) {
+        braft::AsyncClosureGuard done_guard(iter.done());
+
+        butil::IOBuf data = iter.data();
+
+        int len = data.length();
+        LOG(INFO) << "Calling OnApplyCallback";
+        (*_on_apply_callback)(this, &data, len);
+      }
     }
 
     int start(string ip,
@@ -107,7 +121,7 @@ private:
       // will be inconsistent with others in this group.
 
       // Serialize request to IOBuf
-      const int64_t term = _leader_term.load(butil::memory_order_relaxed);
+      //const int64_t term = _leader_term.load(butil::memory_order_relaxed);
       /*
         This logic was copied from examples, but our logic for
         switching servers is different.
@@ -122,10 +136,6 @@ private:
       // This callback would be iovoked when the task actually excuted or
       // fail
       task.done = new BknrClosure(this, callbackHandle, callback);
-      if (true /*FLAGS_check_term*/) {
-        // ABA problem can be avoid if expected_term is set
-        task.expected_term = term;
-      }
       // Now the task is applied to the group, waiting for the result.
       return _node->apply(task);
     }
@@ -137,17 +147,15 @@ private:
   };
 
   void BknrClosure::Run() {
-    if (status().ok()) {
-      (*_callback)(_fsm,
-                _callbackHandle,
-                status().ok(),
-                status().error_cstr());
-    }
+    (*_callback)(_fsm,
+                 _callbackHandle,
+                 status().ok(),
+                 status().error_cstr());
   }
 
   extern "C" {
-    BknrStateMachine* make_bknr_state_machine() {
-      return new BknrStateMachine();
+    BknrStateMachine* make_bknr_state_machine(OnApplyCallback* on_apply_callback) {
+      return new BknrStateMachine(on_apply_callback);
     }
 
     void destroy_bknr_state_machine(BknrStateMachine* fsm) {
@@ -184,7 +192,7 @@ private:
       fsm->_server.Stop(0);
     }
 
-    bool bknr_is_leader(BknrStateMachine* fsm) {
+    int bknr_is_leader(BknrStateMachine* fsm) {
       return fsm->_node->is_leader();
     }
 
@@ -193,6 +201,11 @@ private:
                                 int callbackHandle) {
       fsm->apply(data, data_len, callback,
                  callbackHandle);
+    }
+
+    void bknr_iobuf_copy_to(butil::IOBuf* buf, void* arr, int len) {
+      LOG(INFO) << "Copying IOBuf";
+      buf->copy_to(arr, len);
     }
   }
 }
