@@ -39,12 +39,15 @@
                :easy-macros
                :bordeaux-threads)
   :components ((braft-cpp-library "braft_compat")
-               (:file "server")))
+               (:file "server")
+               (:file "store")))
 
 
 #+lispworks
 (defsystem #:bknr.cluster/tests
   :serial t
   :depends-on (#:bknr.cluster
+               #:fiveam-matchers
                #:util/fiveam)
-  :components ((:file "test-server")))
+  :components ((:file "test-server")
+               (:file "test-store")))

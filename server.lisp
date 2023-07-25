@@ -127,7 +127,7 @@
    (snapshot-interval :initarg :snapshot-interval
                        :initform (* 24 30 60))
    (data-path :initarg :data-path
-              :reader data-path)
+              :accessor data-path)
    (group :initarg :group
           :reader group)))
 
