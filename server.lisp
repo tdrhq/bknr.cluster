@@ -165,7 +165,7 @@
    (group :initarg :group
           :reader group)))
 
-(defvar *state-machine-reverse-hash* (make-hash-table :test #'equalp :weak-kind :value))
+(defvar *state-machine-reverse-hash* (make-hash-table :test #'equalp))
 
 
 (defmethod initialize-instance :after ((self lisp-state-machine) &key))
