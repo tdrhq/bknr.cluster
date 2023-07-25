@@ -54,7 +54,7 @@
 
 
 (def-fixture cluster (&key (num 3))
-  (with-peer-and-machines (peers machines :num 3)
+  (with-peer-and-machines (peers machines :num num)
     (mapc #'start-up machines)
     (unwind-protect
          (&body)
@@ -102,6 +102,23 @@
                           summing 1)))
           (loop for i from 0 to 100
                 if (= (count-replicated) 3)
+                  return (pass)
+                else
+                  do
+                     (sleep 0.1)))))))
+
+(test simple-transaction-on-single-machine-cluster
+  (dotimes (i 2)
+    (with-fixture cluster (:num 1)
+      (let ((leader (wait-for-leader machines)))
+        (apply-transaction leader :incr)
+        (is (eql 1 (val leader)))
+        (flet ((count-replicated ()
+                 (loop for machine in machines
+                       if (eql 1 (val machine))
+                          summing 1)))
+          (loop for i from 0 to 100
+                if (= (count-replicated) 1)
                   return (pass)
                 else
                   do
