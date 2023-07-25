@@ -94,7 +94,7 @@
   (dotimes (i 2)
     (with-fixture cluster ()
       (let ((leader (wait-for-leader machines)))
-        (apply-transaction leader :incr)
+        (is (eql 1 (apply-transaction leader :incr)))
         (is (eql 1 (val leader)))
         (flet ((count-replicated ()
                  (loop for machine in machines

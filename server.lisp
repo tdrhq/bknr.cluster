@@ -51,6 +51,30 @@
   :lisp-to-foreign `(c-state-machine ,h))
 
 
+(defvar *lisp-callback-counter* 0)
+
+(defclass lisp-callback ()
+  ((fn :initarg :fn
+     :reader lisp-callback-fn)
+   (id :initarg :id
+       :initform (atomics:atomic-incf *lisp-callback-counter*)
+       :reader lisp-callback-id)))
+
+(defvar *lisp-callbacks* (make-hash-table))
+
+(defmethod initialize-instance :after ((self lisp-callback) &key)
+  (setf (gethash (lisp-callback-id self) *lisp-callbacks*)
+        self))
+
+(defmethod destroy-lisp-callback ((self lisp-callback))
+  (remhash (lisp-callback-id self) *lisp-callbacks*))
+
+(fli:define-foreign-converter lisp-callback ()
+  h
+  :foreign-type :int
+  :foreign-to-lisp `(gethash ,h *lisp-callbacks*)
+  :lisp-to-foreign `(lisp-callback-id ,h))
+
 (defun reload-native ()
   (progn
     (fli:disconnect-module :braft-compat)
@@ -69,12 +93,19 @@
     (foo :int))
 
 (fli:define-c-struct snapshot-reader
-  (foo :int))
+    (foo :int))
+
+(fli:define-foreign-callable funcall-lisp-callback-with-str
+    ((lisp-callback lisp-callback)
+     (str (:pointer :char)))
+  (let ((str (fli:convert-from-foreign-string str)))
+    (funcall lisp-callback str)))
 
 (fli:define-foreign-function make-bknr-state-machine
     ((on-apply-callback :pointer)
      (on-snapshot-save :pointer)
-     (on-snapshot-load :pointer))
+     (on-snapshot-load :pointer)
+     (funcall-lisp-callback-with-str :pointer))
   :result-type (:pointer bknr-state-machine)
   :module :braft-compat)
 
@@ -96,7 +127,8 @@
     (bknr-on-apply-callback :result-type :void)
     ((fsm lisp-state-machine)
      (iobuf (:pointer io-buf))
-     (data-len :int))
+     (data-len :int)
+     (lisp-callback lisp-callback))
   (log:info "in on-apply-callable")
   (let ((arr (make-array data-len
                          :element-type '(unsigned-byte 8)
@@ -108,9 +140,11 @@
      data-len)
     (log:info "calling commit transaction")
 
-    (commit-transaction
-     fsm
-     (decode (flex:make-in-memory-input-stream arr)))))
+    (let ((res (commit-transaction
+                fsm
+                (decode (flex:make-in-memory-input-stream arr)))))
+    (when lisp-callback
+      (funcall (lisp-callback-fn lisp-callback) res)))))
 
 (defvar *next-handle* 1)
 
@@ -183,7 +217,8 @@
   (let ((fli (apply #'make-bknr-state-machine
                     (loop for callback in '(bknr-on-apply-callback
                                             bknr-snapshot-save
-                                            bknr-snapshot-load)
+                                            bknr-snapshot-load
+                                            funcall-lisp-callback-with-str)
                           collect (fli:make-pointer :symbol-name callback)))))
     (setf (c-state-machine self) fli)
     (setf (gethash fli *state-machine-reverse-hash*)
@@ -203,29 +238,10 @@
     ((sm lisp-state-machine)
      (data :lisp-simple-1d-array )
      (data-len :int)
-     (callback :pointer)
-     (callback-handle :int))
+     (lisp-callback lisp-callback)
+     (error-callback lisp-callback))
   :result-type :void)
 
-
-(fli:define-foreign-callable (bknr-apply-transaction-callback
-                              :result-type :void)
-    ((sm lisp-state-machine)
-     (callback-handle :int)
-     (success :int)
-     (msg (:pointer :char)))
-  (declare (ignore sm))
-  (cond
-    ((zerop success)
-     (log:error "Got result: ~a" (fli:convert-from-foreign-string msg)))
-    (t
-     (log:info "Result on thread: ~a" (bt:current-thread))
-     (let ((cv (gethash callback-handle *cv-map*)))
-       (bt:with-lock-held (*lock*)
-         (log:info "Got lock")
-         (when cv
-           (log:info "Got cv: ~a" cv)
-           (bt:condition-notify cv)))))))
 
 (fli:define-foreign-callable (bknr-snapshot-save
                               :result-type :void)
@@ -260,17 +276,35 @@
                               :initial-contents data
                               :allocation :static))
             (cv-handle (atomics:atomic-incf *next-cv-handle*))
-            (cv (bt:make-condition-variable)))
+            (cv (bt:make-condition-variable))
+            (result nil))
         (setf (gethash cv-handle *cv-map*)
               cv)
 
         (log:info "Calling from thread: ~a" (bt:current-thread))
-        (bt:with-lock-held (*lock*)
-          (bknr-apply-transaction
-           self
-           copy
-           (length copy)
-           (fli:make-pointer :symbol-name 'bknr-apply-transaction-callback)
-           cv-handle)
-          (unless (mp:condition-variable-wait cv *lock* :timeout 30)
-            (error "Transaction failed to apply in time")))))))
+        (let ((lisp-callback
+                (make-instance 'lisp-callback
+                               :fn (lambda (this-result)
+                                     (setf result this-result)
+                                     (log:info "Result on thread: ~a" (bt:current-thread))
+                                     (bt:with-lock-held (*lock*)
+                                       (log:info "Got lock")
+                                       (when cv
+                                         (log:info "Got cv: ~a" cv)
+                                         (bt:condition-notify cv))))))
+              (error-callback
+                (make-instance 'lisp-callback
+                               :fn (lambda (msg)
+                                     (log:error "Got result: ~a" msg)))))
+          (unwind-protect
+               (bt:with-lock-held (*lock*)
+                 (bknr-apply-transaction
+                  self
+                  copy
+                  (length copy)
+                  lisp-callback
+                  error-callback)
+                 (unless (mp:condition-variable-wait cv *lock* :timeout 30)
+                   (error "Transaction failed to apply in time"))
+                 result)
+            (destroy-lisp-callback lisp-callback)))))))

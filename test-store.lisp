@@ -43,11 +43,8 @@
 (test simple-creation
   (with-fixture state ()
     (let ((obj (make-instance 'foo)))
-      #+nil
       (assert-that (class-instances 'foo)
                    (contains obj))
-      #+nil
       (setf (arg obj) 2)
-      #+nil
       (assert-that (arg obj)
                    (is-equal-to 2)))))

@@ -17,27 +17,33 @@ namespace bknr {
 
   typedef void transaction_callback(BknrStateMachine* fsm, int callback_handle, int success,
                                     const char* status_message);
+  typedef int LispCallback;
+  typedef void FuncallLispCallbackWithStr(LispCallback lispCallback, const char* str);
 
   class BknrClosure : public braft::Closure {
   public:
     BknrClosure(BknrStateMachine* fsm,
-                int callbackHandle,
-                transaction_callback* callback)
+                LispCallback lisp_callback,
+                FuncallLispCallbackWithStr* funcall_lisp_callback_with_str,
+                LispCallback error_callback)
       : _fsm(fsm),
-        _callback(callback),
-        _callbackHandle(callbackHandle)
+        _lisp_callback(lisp_callback),
+        _funcall_lisp_callback_with_str(funcall_lisp_callback_with_str),
+        _error_callback(lisp_callback)
     {}
 
     void Run();
-private:
+public:
     BknrStateMachine* _fsm;
-    transaction_callback* _callback;
-    int _callbackHandle;
+    LispCallback _lisp_callback;
+    FuncallLispCallbackWithStr* _funcall_lisp_callback_with_str;
+    LispCallback _error_callback;
   };
 
   typedef void OnApplyCallback(BknrStateMachine* fsm,
                                butil::IOBuf* data,
-                               int datalen);
+                               int datalen,
+                               LispCallback lisp_callback);
 
   typedef void OnSnapshotSave(BknrStateMachine* fsm,
                               braft::SnapshotWriter* writer,
@@ -50,15 +56,18 @@ private:
     OnApplyCallback* _on_apply_callback;
     OnSnapshotSave* _on_snapshot_save;
     OnSnapshotLoad* _on_snapshot_load;
+    FuncallLispCallbackWithStr* _funcall_lisp_callback_with_str;
 
   public:
     BknrStateMachine (
       OnApplyCallback* on_apply_callback,
       OnSnapshotSave* on_snapshot_save,
-      OnSnapshotLoad* on_snapshot_load
+      OnSnapshotLoad* on_snapshot_load,
+      FuncallLispCallbackWithStr* funcall_lisp_callback_with_str
       ) : _on_apply_callback(on_apply_callback),
           _on_snapshot_save(on_snapshot_save),
           _on_snapshot_load(on_snapshot_load),
+          _funcall_lisp_callback_with_str(funcall_lisp_callback_with_str),
           _node(NULL) {
     }
 
@@ -70,7 +79,13 @@ private:
 
         int len = data.length();
         LOG(INFO) << "Calling OnApplyCallback";
-        (*_on_apply_callback)(this, &data, len);
+        LispCallback callback = -1;
+        if (iter.done()) {
+          BknrClosure* c = dynamic_cast<BknrClosure*>(iter.done());
+          callback = c->_lisp_callback;
+        }
+
+        (*_on_apply_callback)(this, &data, len, callback);
       }
     }
 
@@ -131,7 +146,8 @@ private:
 
     butil::atomic<int64_t> _leader_term;
 
-    void apply(const char* data, int data_len, transaction_callback* callback, int callbackHandle) {
+    void apply(const char* data, int data_len, LispCallback lisp_callback,
+               LispCallback error_callback) {
       // Serialize request to the replicated write-ahead-log so that all the
       // peers in the group receive this request as well.
       // Notice that _value can't be modified in this routine otherwise it
@@ -152,7 +168,9 @@ private:
       task.data = &log;
       // This callback would be iovoked when the task actually excuted or
       // fail
-      task.done = new BknrClosure(this, callbackHandle, callback);
+      task.done = new BknrClosure(this, lisp_callback,
+                                  _funcall_lisp_callback_with_str,
+                                  error_callback);
       // Now the task is applied to the group, waiting for the result.
       return _node->apply(task);
     }
@@ -164,19 +182,24 @@ private:
   };
 
   void BknrClosure::Run() {
-    (*_callback)(_fsm,
-                 _callbackHandle,
-                 status().ok(),
-                 status().error_cstr());
+    // If the status was okay, then we would've called the callback in
+    // on_apply (see the lisp code). But we need to propagate errors
+    // back too.
+    if (!status().ok()) {
+      (*_funcall_lisp_callback_with_str)(_error_callback,
+                                         status().error_cstr());
+    }
   }
 
   extern "C" {
     BknrStateMachine* make_bknr_state_machine(OnApplyCallback* on_apply_callback,
                                               OnSnapshotSave* on_snapshot_save,
-                                              OnSnapshotLoad* on_snapshot_load) {
+                                              OnSnapshotLoad* on_snapshot_load,
+                                              FuncallLispCallbackWithStr* funcall_lisp_callback_with_str) {
       return new BknrStateMachine(on_apply_callback,
                                   on_snapshot_save,
-                                  on_snapshot_load);
+                                  on_snapshot_load,
+                                  funcall_lisp_callback_with_str);
     }
 
     void destroy_bknr_state_machine(BknrStateMachine* fsm) {
@@ -218,10 +241,8 @@ private:
     }
 
 
-    void bknr_apply_transaction(BknrStateMachine* fsm, const char* data, int data_len, transaction_callback* callback,
-                                int callbackHandle) {
-      fsm->apply(data, data_len, callback,
-                 callbackHandle);
+    void bknr_apply_transaction(BknrStateMachine* fsm, const char* data, int data_len, LispCallback lisp_callback, LispCallback error_callback) {
+      fsm->apply(data, data_len, lisp_callback, error_callback);
     }
 
     void bknr_iobuf_copy_to(butil::IOBuf* buf, void* arr, int len) {
