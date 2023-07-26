@@ -113,6 +113,17 @@
     ((fsm (:pointer bknr-state-machine)))
   :result-type :void)
 
+(fli:define-foreign-function bknr-set-log-level
+    ((level :int))
+  :result-type :void)
+
+;; For tests
+(def-easy-macro with-logs-hidden (&fn fn)
+  (bknr-set-log-level 3)
+  (unwind-protect
+       (fn)
+    (bknr-set-log-level 1)))
+
 (fli:define-foreign-function bknr-iobuf-copy-to
     ((iobuf (:pointer io-buf))
      (ptr :lisp-simple-1d-array)

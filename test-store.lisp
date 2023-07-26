@@ -13,7 +13,9 @@
   (:import-from #:fiveam-matchers/lists
                 #:contains)
   (:import-from #:bknr.cluster/store
-                #:cluster-store))
+                #:cluster-store)
+  (:import-from #:bknr.cluster/server
+                #:with-logs-hidden))
 (in-package :bknr.cluster/test-store)
 
 (util/fiveam:def-suite)
@@ -26,19 +28,19 @@
 (defclass my-test-store (cluster-store)
   ())
 
-
 (def-fixture state ()
-  (tmpdir:with-tmpdir (dir)
-    (let* ((port (util/random-port:random-port)))
-      (unwind-protect
-           (let ((store (make-instance 'my-test-store
-                                       :election-timeout-ms 100
-                                       :directory dir
-                                       :group "dummy"
-                                       :config (format nil "127.0.0.1:~a:0" port)
-                                       :port port)))
-            (&body))
-        (close-store)))))
+  (with-logs-hidden ()
+   (tmpdir:with-tmpdir (dir)
+     (let* ((port (util/random-port:random-port)))
+       (unwind-protect
+            (let ((store (make-instance 'my-test-store
+                                        :election-timeout-ms 100
+                                        :directory dir
+                                        :group "dummy"
+                                        :config (format nil "127.0.0.1:~a:0" port)
+                                        :port port)))
+              (&body))
+         (close-store))))))
 
 (test simple-creation
   (with-fixture state ()

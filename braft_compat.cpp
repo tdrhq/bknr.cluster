@@ -257,5 +257,9 @@ public:
     void bknr_closure_set_error(braft::Closure *closure, int error, const char* msg) {
       closure->status().set_error(error, msg);
     }
+
+    void bknr_set_log_level(int level) {
+      ::logging::SetMinLogLevel(level);
+    }
   }
 }

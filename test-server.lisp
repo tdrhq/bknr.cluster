@@ -8,6 +8,8 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:with-logs-hidden
+                #:bknr-set-log-level
                 #:leaderp
                 #:lisp-state-machine
                 #:commit-transaction
@@ -35,22 +37,23 @@
 
 (def-easy-macro with-peer-and-machines (&binding ports &binding machines
                                                  &key (num 3)  &fn fn)
-  (tmpdir:with-tmpdir (dir)
-    (let* ((ports (loop for i below num
-                        collect (util/random-port:random-port)))
-           (config
-             (str:join ","
-                       (loop for port in ports
-                             collect (format nil "127.0.0.1:~a:0" port))))
-           (machines (loop for port in ports
-                           for id from 0
-                           collect (make-instance 'counter
-                                                  :election-timeout-ms 100
-                                                  :data-path (path:catdir dir (format nil "~a/" id))
-                                                  :config config
-                                                  :group "foobar"
-                                                  :port port))))
-     (fn ports machines))))
+  (with-logs-hidden ()
+    (tmpdir:with-tmpdir (dir)
+      (let* ((ports (loop for i below num
+                          collect (util/random-port:random-port)))
+             (config
+               (str:join ","
+                         (loop for port in ports
+                               collect (format nil "127.0.0.1:~a:0" port))))
+             (machines (loop for port in ports
+                             for id from 0
+                             collect (make-instance 'counter
+                                                    :election-timeout-ms 100
+                                                    :data-path (path:catdir dir (format nil "~a/" id))
+                                                    :config config
+                                                    :group "foobar"
+                                                    :port port))))
+        (fn ports machines)))))
 
 
 (def-fixture cluster (&key (num 3))

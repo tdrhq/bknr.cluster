@@ -22,7 +22,8 @@
     "-shared"
     "-fPIC"
     "-Wall"
-    "-lbraft")
+    "-lbraft"
+    "-lglog")
    :error-output t
    :standard-output t))
 
