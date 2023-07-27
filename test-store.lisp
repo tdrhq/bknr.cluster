@@ -83,6 +83,5 @@
       (assert-that (class-instances 'foo)
                    (contains))
       (open-store)
-      (sleep 1) ;; TODO: remove
       (assert-that (class-instances 'foo)
                    (has-length 1)))))
