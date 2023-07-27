@@ -43,6 +43,7 @@
  *so-file*)
 
 (defvar *lock* (bt:make-lock))
+(defvar *leader-cv* (bt:make-condition-variable))
 
 (fli:define-foreign-converter lisp-state-machine ()
   h
@@ -141,14 +142,22 @@
     ((fsm lisp-state-machine))
   (on-leader-start fsm))
 
-(defmethod on-leader-start (fsm))
+(defmethod on-leader-start (fsm)
+  (log:info "on-leader-start called")
+  (bt:with-lock-held (*lock*)
+    (setf (%leaderp fsm) t)
+    (bt:condition-notify *leader-cv*)))
 
 (fli:define-foreign-callable
     (bknr-on-leader-stop :result-type :void)
     ((fsm lisp-state-machine))
   (on-leader-stop fsm))
 
-(defmethod on-leader-stop (fsm))
+(defmethod on-leader-stop (fsm)
+  (log:info "on-leader-stop called")
+  (bt:with-lock-held (*lock*)
+    (setf (%leaderp fsm) nil)
+    (bt:condition-notify *leader-cv*)))
 
 (fli:define-foreign-callable
     (bknr-on-apply-callback :result-type :void)
@@ -182,6 +191,9 @@
        :initform "127.0.0.1")
    (port :initarg :port
          :initform 9090)
+   (leaderp :initform nil
+            :reader leaderp
+            :writer (setf %leaderp))
    (config :initarg :config)
    (election-timeout-ms :initarg :election-timeout-ms
                         :initform 1000)
@@ -215,9 +227,6 @@
 (fli:define-foreign-function bknr-is-leader
     ((sm (:pointer bknr-state-machine)))
   :result-type :int)
-
-(defmethod leaderp ((self lisp-state-machine))
-  (not (zerop (bknr-is-leader (c-state-machine self)))))
 
 (defmethod start-up ((self lisp-state-machine))
   (allocate-fli self)

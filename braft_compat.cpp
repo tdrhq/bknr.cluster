@@ -146,9 +146,11 @@ public:
     void on_leader_start(int64_t term) {
         _leader_term.store(term, butil::memory_order_release);
         LOG(INFO) << "Node becomes leader";
+        (*_on_leader_start)(this);
     }
 
     void on_leader_stop(const butil::Status& status) {
+        (*_on_leader_stop)(this);
         _leader_term.store(-1, butil::memory_order_release);
         LOG(INFO) << "Node stepped down : " << status;
     }
@@ -169,6 +171,9 @@ public:
         switching servers is different.
         if (term < 0) { return
         redirect(response); } */
+      const int64_t term = _leader_term.load(butil::memory_order_relaxed);
+
+
       butil::IOBuf log;
       log.append(data, data_len);
 
@@ -180,6 +185,18 @@ public:
       task.done = new BknrClosure(this, lisp_callback,
                                   _funcall_lisp_callback_with_str,
                                   error_callback);
+
+      if (term < 0) {
+              brpc::ClosureGuard closure_guard(task.done);
+              LOG(ERROR) << "Attempting to to apply task when we're not a leader";
+              task.done->status().set_error(1, "Attempting to apply task when we're not a leader");
+              return;
+      }
+
+
+      // ABA problem can be avoid if expected_term is set
+      task.expected_term = term;
+
       // Now the task is applied to the group, waiting for the result.
       return _node->apply(task);
     }

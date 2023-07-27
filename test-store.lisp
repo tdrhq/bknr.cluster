@@ -17,6 +17,7 @@
   (:import-from #:bknr.cluster/store
                 #:cluster-store)
   (:import-from #:bknr.cluster/server
+                #:leaderp
                 #:with-logs-hidden)
   (:import-from #:util/store/store
                 #:clear-indices-for-tests)
@@ -56,7 +57,10 @@
                                         :directory dir
                                         :group "dummy"
                                         :config (format nil "127.0.0.1:~a:0" port)
-                                        :port port))))
+                                        :port port))
+                         (loop while (not (leaderp store))
+                               for i from 0 to 1000
+                               do (sleep 0.1))))
                 (open-store)
                 (&body)))
          (safe-close-store))))))
