@@ -52,10 +52,15 @@ public:
   typedef void OnSnapshotLoad(BknrStateMachine* fsm,
                               braft::SnapshotReader* reader);
 
+  typedef void OnLeaderStart(BknrStateMachine* fsm);
+  typedef void OnLeaderStop(BknrStateMachine* fsm);
+
   class BknrStateMachine : public braft::StateMachine {
     OnApplyCallback* _on_apply_callback;
     OnSnapshotSave* _on_snapshot_save;
     OnSnapshotLoad* _on_snapshot_load;
+    OnLeaderStart* _on_leader_start;
+    OnLeaderStop* _on_leader_stop;
     FuncallLispCallbackWithStr* _funcall_lisp_callback_with_str;
 
   public:
@@ -63,10 +68,14 @@ public:
       OnApplyCallback* on_apply_callback,
       OnSnapshotSave* on_snapshot_save,
       OnSnapshotLoad* on_snapshot_load,
+      OnLeaderStart* on_leader_start,
+      OnLeaderStop* on_leader_stop,
       FuncallLispCallbackWithStr* funcall_lisp_callback_with_str
       ) : _on_apply_callback(on_apply_callback),
           _on_snapshot_save(on_snapshot_save),
           _on_snapshot_load(on_snapshot_load),
+          _on_leader_start(on_leader_start),
+          _on_leader_stop(on_leader_stop),
           _funcall_lisp_callback_with_str(funcall_lisp_callback_with_str),
           _node(NULL) {
     }
@@ -195,10 +204,14 @@ public:
     BknrStateMachine* make_bknr_state_machine(OnApplyCallback* on_apply_callback,
                                               OnSnapshotSave* on_snapshot_save,
                                               OnSnapshotLoad* on_snapshot_load,
+                                              OnLeaderStart* on_leader_start,
+                                              OnLeaderStop* on_leader_stop,
                                               FuncallLispCallbackWithStr* funcall_lisp_callback_with_str) {
       return new BknrStateMachine(on_apply_callback,
                                   on_snapshot_save,
                                   on_snapshot_load,
+                                  on_leader_start,
+                                  on_leader_stop,
                                   funcall_lisp_callback_with_str);
     }
 

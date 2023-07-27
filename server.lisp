@@ -105,6 +105,8 @@
     ((on-apply-callback :pointer)
      (on-snapshot-save :pointer)
      (on-snapshot-load :pointer)
+     (on-leader-start :pointer)
+     (on-leader-stop :pointer)
      (funcall-lisp-callback-with-str :pointer))
   :result-type (:pointer bknr-state-machine)
   :module :braft-compat)
@@ -133,6 +135,20 @@
 (fli:define-foreign-function bknr-closure-run
     ((closure (:pointer closure)))
   :result-type :void)
+
+(fli:define-foreign-callable
+    (bknr-on-leader-start :result-type :void)
+    ((fsm lisp-state-machine))
+  (on-leader-start fsm))
+
+(defmethod on-leader-start (fsm))
+
+(fli:define-foreign-callable
+    (bknr-on-leader-stop :result-type :void)
+    ((fsm lisp-state-machine))
+  (on-leader-stop fsm))
+
+(defmethod on-leader-stop (fsm))
 
 (fli:define-foreign-callable
     (bknr-on-apply-callback :result-type :void)
@@ -229,6 +245,8 @@
                     (loop for callback in '(bknr-on-apply-callback
                                             bknr-snapshot-save
                                             bknr-snapshot-load
+                                            bknr-on-leader-start
+                                            bknr-on-leader-stop
                                             funcall-lisp-callback-with-str)
                           collect (fli:make-pointer :symbol-name callback)))))
     (setf (c-state-machine self) fli)
