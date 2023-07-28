@@ -22,19 +22,16 @@ namespace bknr {
 
   class BknrClosure : public braft::Closure {
   public:
-    BknrClosure(BknrStateMachine* fsm,
-                LispCallback lisp_callback,
+    BknrClosure(LispCallback lisp_callback,
                 FuncallLispCallbackWithStr* funcall_lisp_callback_with_str,
                 LispCallback error_callback)
-      : _fsm(fsm),
-        _lisp_callback(lisp_callback),
+      : _lisp_callback(lisp_callback),
         _funcall_lisp_callback_with_str(funcall_lisp_callback_with_str),
         _error_callback(lisp_callback)
     {}
 
     void Run();
 public:
-    BknrStateMachine* _fsm;
     LispCallback _lisp_callback;
     FuncallLispCallbackWithStr* _funcall_lisp_callback_with_str;
     LispCallback _error_callback;
@@ -182,7 +179,7 @@ public:
       task.data = &log;
       // This callback would be iovoked when the task actually excuted or
       // fail
-      task.done = new BknrClosure(this, lisp_callback,
+      task.done = new BknrClosure(lisp_callback,
                                   _funcall_lisp_callback_with_str,
                                   error_callback);
 
