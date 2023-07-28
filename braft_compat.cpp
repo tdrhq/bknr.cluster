@@ -18,29 +18,38 @@ namespace bknr {
   typedef void transaction_callback(BknrStateMachine* fsm, int callback_handle, int success,
                                     const char* status_message);
   typedef int LispCallback;
-  typedef void FuncallLispCallbackWithStr(LispCallback lispCallback, const char* str);
+
+  class BknrClosure;
+
+  typedef void InvokeClosure(BknrClosure* closure,
+                             int ok,
+                             const char* err);
+
+  typedef void DeleteClosure(BknrClosure* closure);
 
   class BknrClosure : public braft::Closure {
   public:
-    BknrClosure(LispCallback lisp_callback,
-                FuncallLispCallbackWithStr* funcall_lisp_callback_with_str,
-                LispCallback error_callback)
-      : _lisp_callback(lisp_callback),
-        _funcall_lisp_callback_with_str(funcall_lisp_callback_with_str),
-        _error_callback(lisp_callback)
-    {}
+    BknrClosure(InvokeClosure* invoke_closure,
+                DeleteClosure* delete_closure)
+      : _invoke_closure(invoke_closure),
+        _delete_closure(delete_closure)
+      {}
+
+    ~BknrClosure() {
+      (*_delete_closure)(this);
+    }
 
     void Run();
 public:
-    LispCallback _lisp_callback;
-    FuncallLispCallbackWithStr* _funcall_lisp_callback_with_str;
-    LispCallback _error_callback;
+    InvokeClosure* _invoke_closure;
+    DeleteClosure* _delete_closure;
   };
 
-  typedef void OnApplyCallback(BknrStateMachine* fsm,
-                               butil::IOBuf* data,
-                               int datalen,
-                               LispCallback lisp_callback);
+  typedef int OnApplyCallback(BknrStateMachine* fsm,
+                              butil::IOBuf* data,
+                              int datalen,
+                              /* we need this to respond with the result */
+                              BknrClosure *closure);
 
   typedef void OnSnapshotSave(BknrStateMachine* fsm,
                               braft::SnapshotWriter* writer,
@@ -58,7 +67,6 @@ public:
     OnSnapshotLoad* _on_snapshot_load;
     OnLeaderStart* _on_leader_start;
     OnLeaderStop* _on_leader_stop;
-    FuncallLispCallbackWithStr* _funcall_lisp_callback_with_str;
 
   public:
     BknrStateMachine (
@@ -66,14 +74,12 @@ public:
       OnSnapshotSave* on_snapshot_save,
       OnSnapshotLoad* on_snapshot_load,
       OnLeaderStart* on_leader_start,
-      OnLeaderStop* on_leader_stop,
-      FuncallLispCallbackWithStr* funcall_lisp_callback_with_str
+      OnLeaderStop* on_leader_stop
       ) : _on_apply_callback(on_apply_callback),
           _on_snapshot_save(on_snapshot_save),
           _on_snapshot_load(on_snapshot_load),
           _on_leader_start(on_leader_start),
           _on_leader_stop(on_leader_stop),
-          _funcall_lisp_callback_with_str(funcall_lisp_callback_with_str),
           _node(NULL) {
     }
 
@@ -85,13 +91,16 @@ public:
 
         int len = data.length();
         LOG(INFO) << "Calling OnApplyCallback";
-        LispCallback callback = -1;
+
+        BknrClosure* c = NULL;
         if (iter.done()) {
-          BknrClosure* c = dynamic_cast<BknrClosure*>(iter.done());
-          callback = c->_lisp_callback;
+          c = dynamic_cast<BknrClosure*>(iter.done());
         }
 
-        (*_on_apply_callback)(this, &data, len, callback);
+        int status = (*_on_apply_callback)(this, &data, len, c);
+        if (!status) {
+          iter.done()->status().set_error(1, "Failed to apply transaction");
+        }
       }
     }
 
@@ -154,8 +163,7 @@ public:
 
     butil::atomic<int64_t> _leader_term;
 
-    void apply(const char* data, int data_len, LispCallback lisp_callback,
-               LispCallback error_callback) {
+    void apply(const char* data, int data_len, BknrClosure* closure) {
       // Serialize request to the replicated write-ahead-log so that all the
       // peers in the group receive this request as well.
       // Notice that _value can't be modified in this routine otherwise it
@@ -179,9 +187,7 @@ public:
       task.data = &log;
       // This callback would be iovoked when the task actually excuted or
       // fail
-      task.done = new BknrClosure(lisp_callback,
-                                  _funcall_lisp_callback_with_str,
-                                  error_callback);
+      task.done = closure;
 
       if (term < 0) {
               brpc::ClosureGuard closure_guard(task.done);
@@ -208,10 +214,10 @@ public:
     // If the status was okay, then we would've called the callback in
     // on_apply (see the lisp code). But we need to propagate errors
     // back too.
-    if (!status().ok()) {
-      (*_funcall_lisp_callback_with_str)(_error_callback,
-                                         status().error_cstr());
-    }
+    (*_invoke_closure)(this,
+                       status().ok(),
+                       status().error_cstr());
+    delete this;
   }
 
   extern "C" {
@@ -219,14 +225,12 @@ public:
                                               OnSnapshotSave* on_snapshot_save,
                                               OnSnapshotLoad* on_snapshot_load,
                                               OnLeaderStart* on_leader_start,
-                                              OnLeaderStop* on_leader_stop,
-                                              FuncallLispCallbackWithStr* funcall_lisp_callback_with_str) {
+                                              OnLeaderStop* on_leader_stop) {
       return new BknrStateMachine(on_apply_callback,
                                   on_snapshot_save,
                                   on_snapshot_load,
                                   on_leader_start,
-                                  on_leader_stop,
-                                  funcall_lisp_callback_with_str);
+                                  on_leader_stop);
     }
 
     void destroy_bknr_state_machine(BknrStateMachine* fsm) {
@@ -268,8 +272,8 @@ public:
     }
 
 
-    void bknr_apply_transaction(BknrStateMachine* fsm, const char* data, int data_len, LispCallback lisp_callback, LispCallback error_callback) {
-      fsm->apply(data, data_len, lisp_callback, error_callback);
+    void bknr_apply_transaction(BknrStateMachine* fsm, const char* data, int data_len, BknrClosure* closure) {
+      fsm->apply(data, data_len, closure);
     }
 
     void bknr_iobuf_copy_to(butil::IOBuf* buf, void* arr, int len) {
@@ -278,7 +282,7 @@ public:
     }
 
     void bknr_closure_run(google::protobuf::Closure *closure) {
-      closure->Run();
+      brpc::ClosureGuard guard(closure);
     }
 
     void bknr_closure_set_error(braft::Closure *closure, int error, const char* msg) {
@@ -287,6 +291,10 @@ public:
 
     void bknr_set_log_level(int level) {
       ::logging::SetMinLogLevel(level);
+    }
+
+    BknrClosure* bknr_make_closure(InvokeClosure* invokeClosure, DeleteClosure* deleteClosure) {
+      return new BknrClosure(invokeClosure, deleteClosure);
     }
   }
 }
