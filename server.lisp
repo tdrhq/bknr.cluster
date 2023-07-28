@@ -129,7 +129,7 @@
 (fli:define-foreign-callable bknr-delete-closure
     ((bknr-closure :pointer))
   (log:info "Deleteing closure at :~s" bknr-closure)
-  (remhash bknr-closure *lisp-closures*))
+  (remhash (fli:pointer-address bknr-closure) *lisp-closures*))
 
 (fli:define-foreign-function make-bknr-state-machine
     ((on-apply-callback :pointer)
@@ -162,7 +162,7 @@
   :result-type :void)
 
 (fli:define-foreign-function bknr-closure-run
-    ((closure (:pointer closure)))
+    ((closure lisp-closure))
   :result-type :void)
 
 (fli:define-foreign-callable

@@ -36,6 +36,7 @@ namespace bknr {
       {}
 
     ~BknrClosure() {
+      LOG(INFO) << "Deleting closure!";
       (*_delete_closure)(this);
     }
 

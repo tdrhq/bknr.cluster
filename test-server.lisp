@@ -8,6 +8,9 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:bknr-closure-run
+                #:closure
+                #:*lisp-closures*
                 #:with-logs-hidden
                 #:bknr-set-log-level
                 #:leaderp
@@ -148,3 +151,14 @@
       (sleep 0.1) ;; todo: apply some transactions here.
       (shutdown self)
       (pass))))
+
+(test closures-are-deleted
+  (clrhash *lisp-closures*)
+  (let ((seen nil))
+    (let ((closure (closure (res status err)
+                     (declare (ignore res status err))
+                     (setf seen t))))
+      (is (eql 1 (hash-table-count *lisp-closures*)))
+      (bknr-closure-run closure)
+      (is-true seen)
+      (is (eql 0 (hash-table-count *lisp-closures*))))))
