@@ -56,7 +56,6 @@
 (defmethod close-store-object :before ((self cluster-store-mixin))
   (shutdown self))
 
-
 (defmethod execute-transaction ((store cluster-store-mixin)
                                 transaction)
   (log:info "executing transaction here")

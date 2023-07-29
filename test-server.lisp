@@ -152,6 +152,24 @@
       (shutdown self)
       (pass))))
 
+(test cleans-up-state-properly
+  (tmpdir:with-tmpdir (dir)
+    (let* ((port (random-port)))
+      (flet ((make-state-machine ()
+               (make-instance 'my-state-machine
+                              :port port
+                              :config (format nil "127.0.0.1:~a:0" port)
+                              :data-path dir
+                              :group "foobar")))
+        (let ((self (make-state-machine)))
+          (LOG:info "Using port: ~a" port)
+          (start-up self)
+          (shutdown self)
+          (let ((other (make-state-machine)))
+            (start-up other)
+            (shutdown other))
+          (pass))))))
+
 (test closures-are-deleted
   (clrhash *lisp-closures*)
   (let ((seen nil))
