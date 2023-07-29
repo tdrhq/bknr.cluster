@@ -311,10 +311,15 @@ public:
       fsm->_node->snapshot(done);
     }
 
-    void bknr_snapshot_writer_get_path(braft::SnapshotWriter* snapshot_writer, char* data, int nlen) {
-      std::string path = snapshot_writer->get_path();
-      path.copy(data, nlen);
-      data[path.length()] = '\0';
+    char* return_cstr(const std::string& path) {
+      char *res = (char*) malloc(path.length() + 10);
+      path.copy(res, path.length());
+      res[path.length()] = '\0';
+      return res;
+    }
+
+    char*  bknr_snapshot_writer_get_path(braft::SnapshotWriter* snapshot_writer) {
+      return return_cstr(snapshot_writer->get_path());
     }
 
     int bknr_snapshot_writer_add_file(braft::SnapshotWriter* snapshot_writer, const char* file) {
@@ -322,8 +327,8 @@ public:
       return snapshot_writer->add_file(file);
     }
 
-    void bknr_snapshot_reader_get_path(braft::SnapshotReader* snapshot_reader, char* data, int nlen) {
-      snapshot_reader->get_path().copy(data, nlen);
+    char* bknr_snapshot_reader_get_path(braft::SnapshotReader* snapshot_reader) {
+      return return_cstr(snapshot_reader->get_path());
     }
   }
 }

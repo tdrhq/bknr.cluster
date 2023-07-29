@@ -448,25 +448,23 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
           (error "Background snapshot failed with: ~a" msg))
         (log:info "Snapshot done")))))
 
+(fli:define-foreign-function free
+    ((data :pointer))
+  :result-type :void)
 
 (defmacro def-get-path (type)
   (let ((fli-name (intern (format nil "BKNR-~a-GET-PATH" (string type))))
         (lisp-name (intern (format nil "~a-GET-PATH" (string type)))))
    `(progn
       (fli:define-foreign-function ,fli-name
-          ((writer (:pointer ,type))
-           (data (:pointer :char))
-           (nlen :int))
-        :result-type :void)
+          ((writer (:pointer ,type)))
+        :result-type (:pointer :char))
 
       (defun ,lisp-name (,type)
-        (let ((nlen 1000))
-          (fli:with-dynamic-foreign-objects ((ptr :char :nelems nlen))
-            (,fli-name ,type ptr nlen)
-            (let ((str (fli:convert-from-foreign-string ptr)))
-              (unless (< (length str) nlen)
-                (error "We probably used too small of a buffer size to get path"))
-              (pathname (format nil "~a/" str)))))))))
+        (let ((ptr (,fli-name ,type)))
+          (unwind-protect
+               (pathname (format nil "~a/" (fli:convert-from-foreign-string ptr)))
+            (free ptr)))))))
 
 (def-get-path snapshot-writer)
 (def-get-path snapshot-reader)
