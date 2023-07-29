@@ -48,7 +48,7 @@ of being Industrial Grade from what I've seen so far.
 ## Other niceness
 
 Braft is better than plain bknr.datastore at maintain data
-integrety. For instance bknr.datastore doesn't checksum transactions
+integrity. For instance bknr.datastore doesn't checksum transactions
 (but it's easy to add). If bknr.datastore crashes during a snapshot,
 you have to manually recover things (bugs that need fixing).
 
