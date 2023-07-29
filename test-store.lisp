@@ -32,9 +32,7 @@
 
 (defun safe-close-store ()
   (when (boundp '*store*)
-   (let ((store *store*))
-     (close-store)
-     (close-store-object store))))
+   (close-store)))
 
 
 (def-fixture state ()
