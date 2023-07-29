@@ -8,11 +8,30 @@
   (:use #:cl
         #:bknr.datastore)
   (:import-from #:bknr.datastore
+                #:ensure-store-current-directory
+                #:ensure-store-random-state
+                #:store-random-state-pathname
+                #:restore-store
+                #:store-subsystem-snapshot-pathname
+                #:restore-subsystem
+                #:store-subsystems
+                #:snapshot-subsystem
+                #:update-store-random-state
+                #:with-log-guard
+                #:with-store-guard
+                #:with-store-state
+                #:snapshot-store
                 #:store-directory
                 #:close-store-object
                 #:execute-unlogged
                 #:execute-transaction)
   (:import-from #:bknr.cluster/server
+                #:snapshot-reader-get-path
+                #:bknr-snapshot-writer-add-file
+                #:on-snapshot-load
+                #:snapshot-writer-get-path
+                #:on-snapshot-save
+                #:with-closure-guard
                 #:data-path
                 #:shutdown
                 #:start-up
@@ -31,6 +50,7 @@
 (defmethod initialize-instance :after ((self cluster-store-mixin) &key)
   (setf (data-path self)
         (store-directory self))
+  ;; TODO: maybe move to restore-store?
   (start-up self))
 
 (defmethod close-store-object :before ((self cluster-store-mixin))
@@ -49,4 +69,54 @@
   (log:info "Commiting transaction here")
   (handler-bind ((error (lambda (e)
                           (dbg:output-backtrace e))))
-      (execute-unlogged transaction)))
+    (execute-unlogged transaction)))
+
+(defvar *current-snapshot-dir*)
+
+(defmethod store-subsystem-snapshot-pathname ((store cluster-store-mixin)
+                                              subsystem)
+  (store-subsystem-snapshot-pathname *current-snapshot-dir* subsystem))
+
+(defmethod store-random-state-pathname ((store cluster-store-mixin))
+  (merge-pathnames #P "random-state" *current-snapshot-dir*))
+
+(defmethod ensure-store-current-directory ((store cluster-store-mixin))
+  ;; ignore
+  (values))
+
+(defmethod restore-store ((self cluster-store-mixin) &key)
+  (values))
+
+(defmethod on-snapshot-save ((store cluster-store-mixin)
+                             snapshot-writer
+                             done)
+  (with-closure-guard (done)
+    (let ((path (ensure-directories-exist
+                 (snapshot-writer-get-path snapshot-writer))))
+      (with-store-state (:read-only store)
+        (with-store-guard ()
+          (with-log-guard ()
+            (with-store-state (:snapshot)
+              (let ((*current-snapshot-dir* path))
+                ;;(update-store-random-state store)
+                (dolist (subsystem (store-subsystems store))
+                  (snapshot-subsystem store subsystem)
+                  (let ((name (pathname-name (store-subsystem-snapshot-pathname store subsystem))))
+                    (log:info "Adding ~a to snapshot" name)
+                    (assert
+                     (= 0
+                        (bknr-snapshot-writer-add-file
+                         snapshot-writer
+                         name)))))))))))))
+
+(defmethod on-snapshot-load ((store cluster-store-mixin)
+                             snapshot-reader)
+  (with-store-state (:restore)
+    (let ((*current-snapshot-dir* (snapshot-reader-get-path snapshot-reader)))
+      ;;(ensure-store-random-state store)
+      (dolist (subsystem (store-subsystems store))
+        (restore-subsystem store subsystem)))))
+
+
+(defmethod snapshot-store ((store cluster-store-mixin))
+  (bknr.cluster/server:snapshot store))

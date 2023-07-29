@@ -19,7 +19,11 @@
   (:import-from #:easy-macros
                 #:def-easy-macro)
   (:import-from #:flexi-streams
-                #:vector-output-stream))
+                #:vector-output-stream)
+  (:export
+   #:snapshot
+   #:with-closure-guard
+   #:snapshot-writer-get-path))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -62,6 +66,12 @@
    (foreign :initarg :foreign
             :accessor lisp-closure-foreign)))
 
+(defclass transient-lisp-closure ()
+  ((foreign :initarg :foreign
+            :accessor lisp-closure-foreign))
+  (:documentation "If braft creates a closure and passes it to us, then this is what we
+do. In this case this closure is only valid in the dynamic extent, and maybe even less."))
+
 (defvar *lisp-closures* (make-hash-table :test #'equalp))
 
 (fli:define-foreign-function bknr-make-closure
@@ -82,10 +92,14 @@
   (setf (gethash (fli:pointer-address (lisp-closure-foreign self)) *lisp-closures*)
         self))
 
+(defun find-lisp-closure-for-pointer (h)
+  (log:info "Finding lisp closure for: ~a" h)
+  (gethash (fli:pointer-address h) *lisp-closures*))
+
 (fli:define-foreign-converter lisp-closure ()
   h
-  :foreign-type `(:pointer :closure)
-  :foreign-to-lisp `(gethash (fli:pointer-address ,h) *lisp-closures*)
+  :foreign-type `(:pointer closure)
+  :foreign-to-lisp `(find-lisp-closure-for-pointer ,h)
   :lisp-to-foreign `(lisp-closure-foreign ,h))
 
 
@@ -113,7 +127,7 @@
     ((bknr-closure (:pointer closure))
      (status :int)
      (str (:pointer :char)))
-  (let ((lisp-closure (gethash (fli:pointer-address bknr-closure) *lisp-closures*)))
+  (let ((lisp-closure (find-lisp-closure-for-pointer bknr-closure)))
    (cond
      ((not lisp-closure)
       (log:warn "invoke-closure called on deleted closure: ~a" bknr-closure))
@@ -163,6 +177,12 @@
 
 (fli:define-foreign-function bknr-closure-run
     ((closure lisp-closure))
+  :result-type :void)
+
+(fli:define-foreign-function bknr-closure-set-error
+    ((closure lisp-closure)
+     (err :int)
+     (msg (:reference-pass :ef-mb-string)))
   :result-type :void)
 
 (fli:define-foreign-callable
@@ -315,12 +335,42 @@
                               :result-type :void)
     ((sm lisp-state-machine)
      (snapshot-writer (:pointer snapshot-writer))
-     (done (:pointer closure))))
+     (done (:pointer :closure) #| this may not be a lisp closure! |#))
+  (on-snapshot-save sm snapshot-writer
+                    (make-instance
+                     'transient-lisp-closure
+                     :foreign done)))
 
 (fli:define-foreign-callable (bknr-snapshot-load
-                              :result-type :void)
+                              :result-type :int)
     ((sm lisp-state-machine)
-     (snapshot-reader (:pointer snapshot-reader))))
+     (snapshot-reader (:pointer snapshot-reader)))
+  ;; returns 0 for success, 1 for fail
+  (handler-case
+      (handler-bind ((error
+                       (lambda (e)
+                         (declare (ignore e))
+                         (dbg:output-backtrace :verbose t))))
+        (on-snapshot-load sm snapshot-reader)
+        0)
+    (error ()
+      (log:info "Returning error for snapshot-load")
+      1)))
+
+(def-easy-macro with-closure-guard (closure &fn fn)
+  (assert closure)
+  (unwind-protect
+       (handler-case
+           (funcall fn)
+         (error (e)
+           (bknr-closure-set-error closure 1
+                                   (format nil "Failed with: ~a" e))))
+    (log:info "Running closure guard run")
+    (bknr-closure-run closure)))
+
+(defgeneric on-snapshot-load (fsm snapshot-reader))
+
+(defgeneric on-snapshot-save (fsm snapshot-writer done-closure))
 
 (defgeneric commit-transaction (state-machine transaction))
 
@@ -373,3 +423,55 @@
                  (unless (mp:condition-variable-wait cv *lock* :timeout 30)
                    (error "Transaction failed to apply in time"))
                  result)))))))
+
+(fli:define-foreign-function bknr-snapshot
+    ((fsm lisp-state-machine)
+     (closure lisp-closure))
+  :result-type :void)
+
+(defmethod snapshot ((self lisp-state-machine))
+  (let ((lock (bt:make-lock))
+        (cv (bt:make-condition-variable))
+        (msg)
+        (success))
+    (let ((closure (closure (res this-success this-msg)
+                     (declare (ignore res))
+                     (setf msg this-msg)
+                     (setf success this-success)
+                     (bt:with-lock-held (lock)
+                       (bt:condition-notify cv)))))
+      (bt:with-lock-held (lock)
+        (bknr-snapshot self closure)
+        (log:info "Waiting for snapshot to be done")
+        (bt:condition-wait cv lock)
+        (unless success
+          (error "Background snapshot failed with: ~a" msg))
+        (log:info "Snapshot done")))))
+
+
+(defmacro def-get-path (type)
+  (let ((fli-name (intern (format nil "BKNR-~a-GET-PATH" (string type))))
+        (lisp-name (intern (format nil "~a-GET-PATH" (string type)))))
+   `(progn
+      (fli:define-foreign-function ,fli-name
+          ((writer (:pointer ,type))
+           (data (:pointer :char))
+           (nlen :int))
+        :result-type :void)
+
+      (defun ,lisp-name (,type)
+        (let ((nlen 1000))
+          (fli:with-dynamic-foreign-objects ((ptr :char :nelems nlen))
+            (,fli-name ,type ptr nlen)
+            (let ((str (fli:convert-from-foreign-string ptr)))
+              (unless (< (length str) nlen)
+                (error "We probably used too small of a buffer size to get path"))
+              (pathname (format nil "~a/" str)))))))))
+
+(def-get-path snapshot-writer)
+(def-get-path snapshot-reader)
+
+(fli:define-foreign-function bknr-snapshot-writer-add-file
+    ((sw (:pointer snapshot-writer))
+     (file (:reference-pass :ef-mb-string)))
+  :result-type :int)

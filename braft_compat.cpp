@@ -56,8 +56,8 @@ public:
                               braft::SnapshotWriter* writer,
                               braft::Closure* done);
 
-  typedef void OnSnapshotLoad(BknrStateMachine* fsm,
-                              braft::SnapshotReader* reader);
+  typedef int OnSnapshotLoad(BknrStateMachine* fsm,
+                             braft::SnapshotReader* reader);
 
   typedef void OnLeaderStart(BknrStateMachine* fsm);
   typedef void OnLeaderStop(BknrStateMachine* fsm);
@@ -148,6 +148,15 @@ public:
       if (_node) {
         _node->join();
       }
+    }
+
+    void on_snapshot_save(braft::SnapshotWriter* writer,
+                          braft::Closure* done) {
+      (*_on_snapshot_save)(this, writer, done);
+    }
+
+    int on_snapshot_load(braft::SnapshotReader* reader) {
+      return (*_on_snapshot_load)(this, reader);
     }
 
     void on_leader_start(int64_t term) {
@@ -296,6 +305,25 @@ public:
 
     BknrClosure* bknr_make_closure(InvokeClosure* invokeClosure, DeleteClosure* deleteClosure) {
       return new BknrClosure(invokeClosure, deleteClosure);
+    }
+
+    void bknr_snapshot(BknrStateMachine* fsm, braft::Closure* done) {
+      fsm->_node->snapshot(done);
+    }
+
+    void bknr_snapshot_writer_get_path(braft::SnapshotWriter* snapshot_writer, char* data, int nlen) {
+      std::string path = snapshot_writer->get_path();
+      path.copy(data, nlen);
+      data[path.length()] = '\0';
+    }
+
+    int bknr_snapshot_writer_add_file(braft::SnapshotWriter* snapshot_writer, const char* file) {
+      LOG(ERROR) << "Adding snapshot file: " << file;
+      return snapshot_writer->add_file(file);
+    }
+
+    void bknr_snapshot_reader_get_path(braft::SnapshotReader* snapshot_reader, char* data, int nlen) {
+      snapshot_reader->get_path().copy(data, nlen);
     }
   }
 }

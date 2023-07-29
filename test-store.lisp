@@ -1,7 +1,9 @@
 (defpackage :bknr.cluster/test-store
   (:use #:cl
-        #:fiveam)
+        #:fiveam
+        #:fiveam-matchers)
   (:import-from #:bknr.datastore
+                #:snapshot
                 #:close-store-object
                 #:*store*
                 #:execute-transaction
@@ -9,20 +11,13 @@
                 #:close-store
                 #:persistent-class
                 #:store-object)
-  (:import-from #:fiveam-matchers/core
-                #:is-equal-to
-                #:assert-that)
-  (:import-from #:fiveam-matchers/lists
-                #:contains)
   (:import-from #:bknr.cluster/store
                 #:cluster-store)
   (:import-from #:bknr.cluster/server
                 #:leaderp
                 #:with-logs-hidden)
   (:import-from #:util/store/store
-                #:clear-indices-for-tests)
-  (:import-from #:fiveam-matchers/has-length
-                #:has-length))
+                #:clear-indices-for-tests))
 (in-package :bknr.cluster/test-store)
 
 (util/fiveam:def-suite)
@@ -44,7 +39,7 @@
 
 (def-fixture state ()
   (with-logs-hidden ()
-   (tmpdir:with-tmpdir (dir)
+   (tmpdir:with-tmpdir (dir :prefix "test-store")
      (let* ((port (util/random-port:random-port)))
        (unwind-protect
             (let (store)
@@ -80,6 +75,23 @@
       (assert-that (class-instances 'foo)
                    (contains obj))
       (safe-close-store)
+      (assert-that (class-instances 'foo)
+                   (contains))
+      (open-store)
+      (assert-that (class-instances 'foo)
+                   (has-length 1)))))
+
+(test snapshot-and-restore
+  (with-fixture state ()
+    (let ((obj (make-instance 'foo)))
+      (assert-that (class-instances 'foo)
+                   (contains obj))
+      (snapshot)
+      (is-false (path:-d (path:catdir dir "current/")) )
+      (safe-close-store)
+      (assert-that (mapcar #'namestring (directory (path:catdir dir "snapshot/")))
+                   ;; in particular there shouldn't be a temp***:0 directory here.
+                   (contains (matches-regex "snapshot_.*")))
       (assert-that (class-instances 'foo)
                    (contains))
       (open-store)
