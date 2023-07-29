@@ -1,7 +1,9 @@
 
 # bknr.cluster
 
-A Highly Available replicated cluster of bknr.datastores
+A Highly Available replicated cluster of bknr.datastores. Currently
+only supported on Lispworks, but it's probably not too hard to add
+support for other implementations.
 
 ## Context
 
