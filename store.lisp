@@ -104,14 +104,15 @@
                              (bknr-snapshot-writer-add-file
                               snapshot-writer
                               name))))))
-               (let ((*current-snapshot-dir* path))
-                 (log:info "Got random-state pathname: ~a" (store-random-state-pathname store))
-                 (update-store-random-state store)
-                 (add-pathname (store-random-state-pathname store))
+                (let ((*current-snapshot-dir* path))
+                  (log:info "Got random-state pathname: ~a" (store-random-state-pathname store))
+                  (ensure-store-random-state store)
+                  (update-store-random-state store)
+                  (add-pathname (store-random-state-pathname store))
 
-                 (dolist (subsystem (store-subsystems store))
-                   (snapshot-subsystem store subsystem)
-                   (add-pathname (store-subsystem-snapshot-pathname store subsystem))))))))))))
+                  (dolist (subsystem (store-subsystems store))
+                    (snapshot-subsystem store subsystem)
+                    (add-pathname (store-subsystem-snapshot-pathname store subsystem))))))))))))
 
 (defmethod on-snapshot-load ((store cluster-store-mixin)
                              snapshot-reader)
