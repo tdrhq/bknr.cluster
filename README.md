@@ -28,7 +28,7 @@ transaction logs across multiple machines in real time.
 
 ## Raft, braft
 
-This library is built on the shoulder of giants. Obviously, bknr.datastore.
+This library is built on the shoulder of giants. For one, bknr.datastore.
 
 But also, the [Raft Consensus Protocol](https://en.wikipedia.org/wiki/Raft_(algorithm))
 
