@@ -59,7 +59,7 @@ using), but that's something we plan to add.
 bknr.cluster absolutely needs a fork of bknr.datastore: https://github.com/tdrhq/bknr-datastore.
 
 In particular, the fork ensures that transactions are only committed
-after being applied to all replicas.
+after being applied to a majority of replicas.
 
 bknr.cluster also needs braft, which is a pretty heavy
 dependency. (For this reason, it's unlikely that you'll find
