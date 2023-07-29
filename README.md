@@ -32,7 +32,7 @@ This library is built on the shoulder of giants. For one, bknr.datastore.
 
 But also, the [Raft Consensus Protocol](https://en.wikipedia.org/wiki/Raft_(algorithm))
 
-I attempted building Raft from scratch in Lisp. But which it's not
+I attempted building Raft from scratch in Lisp. But while it's not
 that impossible, it seemed like more effort than I wanted to. Plus,
 there's a big issue with GC pauses: A CL GC pause might make it look
 like a leader is unavailable, which might make a switch happen, and we
