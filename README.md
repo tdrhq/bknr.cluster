@@ -99,6 +99,9 @@ TODO
 I haven't yet started using this in prod, but I expect to migrate our
 servers within the next few weeks (from 7/29/23).
 
+Are you interested in testing this? Please let me know. It helps me to
+have multiple people test something as fundamental as a database.
+
 ## Failover/failback strategies
 
 TODO.
