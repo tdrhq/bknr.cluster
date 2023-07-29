@@ -78,7 +78,7 @@
   (store-subsystem-snapshot-pathname *current-snapshot-dir* subsystem))
 
 (defmethod store-random-state-pathname ((store cluster-store-mixin))
-  (merge-pathnames #P "random-state" *current-snapshot-dir*))
+  (merge-pathnames #P"random-state" *current-snapshot-dir*))
 
 (defmethod ensure-store-current-directory ((store cluster-store-mixin))
   ;; ignore
@@ -97,23 +97,28 @@
         (with-store-guard ()
           (with-log-guard ()
             (with-store-state (:snapshot)
-              (let ((*current-snapshot-dir* path))
-                ;;(update-store-random-state store)
-                (dolist (subsystem (store-subsystems store))
-                  (snapshot-subsystem store subsystem)
-                  (let ((name (pathname-name (store-subsystem-snapshot-pathname store subsystem))))
-                    (log:info "Adding ~a to snapshot" name)
-                    (assert
-                     (= 0
-                        (bknr-snapshot-writer-add-file
-                         snapshot-writer
-                         name)))))))))))))
+              (flet ((add-pathname (pathname)
+                       (let ((name (pathname-name pathname)))
+                         (log:info "Adding ~a to snapshot" name)
+                         (assert
+                          (= 0
+                             (bknr-snapshot-writer-add-file
+                              snapshot-writer
+                              name))))))
+               (let ((*current-snapshot-dir* path))
+                 (log:info "Got random-state pathname: ~a" (store-random-state-pathname store))
+                 (update-store-random-state store)
+                 (add-pathname (store-random-state-pathname store))
+
+                 (dolist (subsystem (store-subsystems store))
+                   (snapshot-subsystem store subsystem)
+                   (add-pathname (store-subsystem-snapshot-pathname store subsystem))))))))))))
 
 (defmethod on-snapshot-load ((store cluster-store-mixin)
                              snapshot-reader)
   (with-store-state (:restore)
     (let ((*current-snapshot-dir* (snapshot-reader-get-path snapshot-reader)))
-      ;;(ensure-store-random-state store)
+      (ensure-store-random-state store)
       (dolist (subsystem (store-subsystems store))
         (restore-subsystem store subsystem)))))
 
