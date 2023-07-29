@@ -89,6 +89,8 @@ You can create a cluster of stores like so:
  :port <portN>)
 ```
 
+You can use the `braft_cli` tool to change the configuration of
+servers without downtime.
 
 ## Administration
 
