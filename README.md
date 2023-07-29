@@ -43,6 +43,17 @@ So we settled on the absolutely fantastic
 C++ library. It's not lightweight, but it does live up to its promise
 of being Industrial Grade from what I've seen so far.
 
+## Other niceness
+
+Braft is better than plain bknr.datastore at maintain data
+integrety. For instance bknr.datastore doesn't checksum transactions
+(but it's easy to add). If bknr.datastore crashes during a snapshot,
+you have to manually recover things (bugs that need fixing).
+
+But also, Braft supports asynchronous snapshots. Obviously, this needs
+some additional changes to bknr-datastore (and to any subsystem you're
+using), but that's something we plan to add.
+
 ## Installation
 
 bknr.cluster absolutely needs a fork of bknr.datastore: https://github.com/tdrhq/bknr-datastore.
