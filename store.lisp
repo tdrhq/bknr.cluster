@@ -158,7 +158,8 @@
      (load-from-dir
       store
       (path:catdir (store-directory store) "current/"))
-     (read-old-transaction-log store))))
+     (with-store-state (:restore)
+       (read-old-transaction-log store)))))
 
 (defmethod read-old-transaction-log ((store backward-compatibility-mixin))
   "Reads the OLD format of the transaction log"
