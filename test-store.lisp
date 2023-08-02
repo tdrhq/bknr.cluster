@@ -13,6 +13,7 @@
                 #:persistent-class
                 #:store-object)
   (:import-from #:bknr.cluster/store
+                #:maybe-close-subsystems
                 #:backward-compatibility-mixin
                 #:cluster-store)
   (:import-from #:bknr.cluster/server
@@ -81,6 +82,12 @@
       (setf (arg obj) 2)
       (assert-that (arg obj)
                    (is-equal-to 2)))))
+
+(test maybe-close-subsystems-when-its-already-open
+  (with-fixture state ()
+    (maybe-close-subsystems *store*)
+    (finishes
+     (maybe-close-subsystems *store*))))
 
 (test simple-restore
   (with-fixture state ()

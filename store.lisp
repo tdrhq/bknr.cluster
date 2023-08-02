@@ -8,6 +8,7 @@
   (:use #:cl
         #:bknr.datastore)
   (:import-from #:bknr.datastore
+                #:close-subsystem
                 #:encode
                 #:store-transaction-log-stream
                 #:close-transaction-log-stream
@@ -140,7 +141,19 @@
 
 (defmethod on-snapshot-load ((store cluster-store-mixin)
                              snapshot-reader)
+  (maybe-close-subsystems store)
   (load-from-dir store (snapshot-reader-get-path snapshot-reader)))
+
+(defmethod maybe-close-subsystems ((store cluster-store-mixin))
+  "This could be called either in the beginning, or even halfway through
+   a follower's life. So we must close any open subsystems. Every
+   subsystem should be able to handle close-subsystem even if isn't
+   restored (since it could happen if on an empty store that is being
+   closed.), so we don't need an explicit check to make sure this has
+   been opened."
+
+  (dolist (subsystem (reverse (store-subsystems store)))
+    (close-subsystem store subsystem)))
 
 (defmethod load-from-dir ((store cluster-store-mixin)
                           dir)
