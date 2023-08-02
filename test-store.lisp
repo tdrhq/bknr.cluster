@@ -152,3 +152,24 @@
                    :directory dir)
     (assert-that (class-instances 'foo)
                  (has-length 2))))
+
+(test backward-compatible-store-also-reads-old-transaction-log
+  (with-tmp-store-dir (dir)
+    (make-instance 'mp-store
+                   :directory dir)
+    (make-instance 'foo)
+    (bknr.datastore:snapshot)
+    (make-instance 'foo)
+    (safe-close-store)
+    (with-fixture state (:class 'backward-compatible-store
+                         :dir dir)
+      (assert-that (class-instances 'foo)
+                   (has-length 2))
+      (make-instance 'foo)
+      (assert-that (class-instances 'foo)
+                   (has-length 3))
+      (safe-close-store))
+    (make-instance 'mp-store
+                   :directory dir)
+    (assert-that (class-instances 'foo)
+                 (has-length 3))))

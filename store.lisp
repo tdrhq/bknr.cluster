@@ -157,7 +157,15 @@
     (t
      (load-from-dir
       store
-      (path:catdir (store-directory store) "current/")))))
+      (path:catdir (store-directory store) "current/"))
+     (read-old-transaction-log store))))
+
+(defmethod read-old-transaction-log ((store backward-compatibility-mixin))
+  "Reads the OLD format of the transaction log"
+  (let ((log-file (path:catfile (store-directory store) "current/transaction-log")))
+    (when (path:-e log-file)
+      (bknr.datastore::load-transaction-log
+       log-file))))
 
 
 (defmethod snapshot-store ((store cluster-store-mixin))
