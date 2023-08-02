@@ -252,6 +252,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
    (snapshot-interval :initarg :snapshot-interval
                        :initform (* 24 30 60))
    (data-path :initarg :data-path
+              :initform nil
               :accessor data-path)
    (group :initarg :group
           :reader group)))

@@ -59,8 +59,12 @@
 
 
 (defmethod initialize-instance :after ((self cluster-store-mixin) &key)
-  (setf (data-path self)
-        (path:catdir (store-directory self) "raft/"))
+  (unless (data-path self)
+    ;; The raft data-path may not be in the store object directory! In
+    ;; that case the user might have specified :data-path while
+    ;; creating this object.
+    (setf (data-path self)
+          (path:catdir (store-directory self) "raft/")))
   ;; TODO: maybe move to restore-store?
   (start-up self))
 
