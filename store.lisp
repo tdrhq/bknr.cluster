@@ -8,6 +8,9 @@
   (:use #:cl
         #:bknr.datastore)
   (:import-from #:bknr.datastore
+                #:encode
+                #:store-transaction-log-stream
+                #:close-transaction-log-stream
                 #:ensure-store-current-directory
                 #:ensure-store-random-state
                 #:store-random-state-pathname
@@ -37,7 +40,9 @@
                 #:start-up
                 #:lisp-state-machine
                 #:commit-transaction
-                #:apply-transaction))
+                #:apply-transaction)
+  (:export
+   #:backward-compatibility-mixin))
 (in-package :bknr.cluster/store)
 
 (defclass cluster-store-mixin (lisp-state-machine)
@@ -47,9 +52,14 @@
                          store)
   ())
 
+(defclass backward-compatibility-mixin ()
+  ())
+
+
+
 (defmethod initialize-instance :after ((self cluster-store-mixin) &key)
   (setf (data-path self)
-        (store-directory self))
+        (path:catdir (store-directory self) "raft/"))
   ;; TODO: maybe move to restore-store?
   (start-up self))
 
@@ -62,6 +72,20 @@
   (apply-transaction store
                      transaction))
 
+(defmethod execute-transaction :after ((store backward-compatibility-mixin)
+                                       transaction)
+  (let ((stream (store-transaction-log-stream store)))
+    (encode transaction stream)))
+
+(defmethod close-store-object :after ((store backward-compatibility-mixin))
+  (close-transaction-log-stream store))
+
+(defmethod commit-transaction ((store cluster-store-mixin)
+                               transaction)
+  (log:info "Commiting transaction here")
+  (handler-bind ((error (lambda (e)
+                          (dbg:output-backtrace e))))
+    (execute-unlogged transaction)))
 
 (defmethod commit-transaction ((store cluster-store-mixin)
                                transaction)
@@ -116,11 +140,24 @@
 
 (defmethod on-snapshot-load ((store cluster-store-mixin)
                              snapshot-reader)
+  (load-from-dir store (snapshot-reader-get-path snapshot-reader)))
+
+(defmethod load-from-dir ((store cluster-store-mixin)
+                          dir)
   (with-store-state (:restore)
-    (let ((*current-snapshot-dir* (snapshot-reader-get-path snapshot-reader)))
+    (let ((*current-snapshot-dir* dir))
       (ensure-store-random-state store)
       (dolist (subsystem (store-subsystems store))
         (restore-subsystem store subsystem)))))
+
+(defmethod restore-store :after ((store backward-compatibility-mixin) &key)
+  (cond
+    ((path:-d (path:catdir (store-directory store) "raft/"))
+     (log:info "We found state associated with raft, we will not load the old store."))
+    (t
+     (load-from-dir
+      store
+      (path:catdir (store-directory store) "current/")))))
 
 
 (defmethod snapshot-store ((store cluster-store-mixin))

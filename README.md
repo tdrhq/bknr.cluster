@@ -94,6 +94,23 @@ You can create a cluster of stores like so:
 You can use the `braft_cli` tool to change the configuration of
 servers without downtime.
 
+## Migration
+
+We provide a mixin `backward-compatibility-mixin`. Add this as a
+superclass to your store class and we'll *try* to keep the store
+backward compatible.
+
+What this means is the following:
+* When you load this store, if there's not Raft data, it'll load the
+  snapshot from the old location.
+* As you write data, it'll keep appending logs to the old transaction
+  log.
+
+Keep in mind that snapshots will **not** be propagated to the old
+format. It will always have the old snapshot with a long appended log
+file. So you probably want to be reasonably sure that you want to make
+the switch before you do.
+
 ## Administration
 
 TODO
