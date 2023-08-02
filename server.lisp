@@ -295,7 +295,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                           (let ((res (slot-value self slot)))
                             (cond
                               ((pathnamep res)
-                               (namestring res))
+                               (namestring (ensure-directories-exist res)))
                               (t
                                res)))))))
     (unless (= 0 res)
