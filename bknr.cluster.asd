@@ -44,7 +44,7 @@
                (:file "store")))
 
 
-#+lispworks
+#+(and lispworks linux)
 (defsystem #:bknr.cluster/tests
   :serial t
   :depends-on (#:bknr.cluster
