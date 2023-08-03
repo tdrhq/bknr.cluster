@@ -145,7 +145,10 @@
 
                   (dolist (subsystem (store-subsystems store))
                     (snapshot-subsystem store subsystem)
-                    (add-pathname (store-subsystem-snapshot-pathname store subsystem))))))))))))
+                    (let ((pathname (store-subsystem-snapshot-pathname store subsystem)))
+                      ;; Some subsystems don't actually make a snapshot
+                      (when (path:-e pathname)
+                        (add-pathname pathname)))))))))))))
 
 (defmethod on-snapshot-load ((store cluster-store-mixin)
                              snapshot-reader)
