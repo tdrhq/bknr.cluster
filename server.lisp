@@ -32,7 +32,30 @@
 
 (defconstant +protocol-version+ 1)
 
-(defparameter *so-file*  #. (asdf:output-file 'asdf:compile-op (asdf:find-component :bknr.cluster "braft_compat")))
+;; Sync with util/misc
+(eval-when (:compile-toplevel)
+  (defun relpath (path start)
+    (assert (fad:pathname-absolute-p path))
+    (assert (fad:pathname-absolute-p start))
+
+    (labels ((compute (path start)
+               (cond
+                 ((equal (car path) (car start))
+                  (compute (cdr path) (cdr start)))
+                 ((not start)
+                  path)
+                 (t
+                  (compute (list* ".." path)
+                           (cdr start))))))
+      (make-pathname
+       :directory
+       (list* :relative
+              (compute (pathname-directory path) (pathname-directory start)))
+       :defaults path))))
+
+
+(defparameter *so-file*  #. (relpath (asdf:output-file 'asdf:compile-op (asdf:find-component :bknr.cluster "braft_compat"))
+                                               (uiop:getcwd)))
 
 (fli:register-module
  :braft
