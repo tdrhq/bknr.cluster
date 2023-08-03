@@ -207,6 +207,17 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
     (setf (%leaderp fsm) nil)
     (bt:condition-notify *leader-cv*)))
 
+(def-easy-macro without-crashing (&key (error 0) (success 1) tag &fn fn)
+  (handler-case
+      (handler-bind ((error (lambda (e)
+                              (format t "Got error for ~a: ~a " tag e)
+                              (dbg:output-backtrace :brief t))))
+        (fn)
+        success)
+    (error ()
+      (log:info "ignoring crash for in ~a" tag)
+      error)))
+
 (fli:define-foreign-callable
     (bknr-on-apply-callback :result-type :int)
     ((fsm lisp-state-machine)
@@ -214,25 +225,26 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
      (data-len :int)
      (closure lisp-closure))
   (log:info "in on-apply-callable")
-  (unwind-protect
-       (let ((arr (make-array data-len
-                              :element-type '(unsigned-byte 8)
-                              :allocation :static)))
-         (log:info "going to copy")
-         (bknr-iobuf-copy-to
-          iobuf
-          arr
-          data-len)
-         (log:info "calling commit transaction")
+  (without-crashing (:tag "on-apply-callback")
+    (let ((arr (make-array data-len
+                           :element-type '(unsigned-byte 8)
+                           :allocation :static)))
+      (log:info "going to copy")
+      (bknr-iobuf-copy-to
+       iobuf
+       arr
+       data-len)
+      (log:info "calling commit transaction")
 
-         (let ((res (commit-transaction
-                     fsm
-                     (decode (flex:make-in-memory-input-stream arr)))))
-           (when closure
-             (setf (lisp-closure-result closure)
-                   res)))
-         1)
-    0))
+      (let ((transaction (decode (flex:make-in-memory-input-stream arr))))
+        (log:info "Going to commit: ~s" transaction)
+        (let ((res (commit-transaction
+                    fsm
+                    transaction)))
+          (log:info "commit transaction callback done")
+          (when closure
+            (setf (lisp-closure-result closure)
+                  res)))))))
 
 (defvar *next-handle* 1)
 
@@ -347,16 +359,8 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
     ((sm lisp-state-machine)
      (snapshot-reader (:pointer snapshot-reader)))
   ;; returns 0 for success, 1 for fail
-  (handler-case
-      (handler-bind ((error
-                       (lambda (e)
-                         (declare (ignore e))
-                         (dbg:output-backtrace :verbose t))))
-        (on-snapshot-load sm snapshot-reader)
-        0)
-    (error ()
-      (log:info "Returning error for snapshot-load")
-      1)))
+  (without-crashing (:error 1 :success 0 :tag "snapshot-load")
+   (on-snapshot-load sm snapshot-reader)))
 
 (def-easy-macro with-closure-guard (closure &fn fn)
   (assert closure)

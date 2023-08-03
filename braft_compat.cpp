@@ -104,6 +104,7 @@ public:
 
         int status = (*_on_apply_callback)(this, &data, len, c);
         if (!status) {
+          LOG(INFO) << "Error applying transaction";
           iter.done()->status().set_error(1, "Failed to apply transaction");
         }
       }
@@ -148,10 +149,10 @@ public:
         }
 
         LOG(INFO) << "Waiting for file lock...";
-
         // This is some stupid shit. Ignore it. It's currently used by
         // a monitoring script to see if the new process is ready.
         LOG(INFO) << "[FAKE LOG] Opening transaction log lock";
+        LOG(INFO).flush();
 
         if (flock(_lock_fd, LOCK_EX) < 0) {
           perror("Failed to get lock");
@@ -322,6 +323,7 @@ public:
     void bknr_iobuf_copy_to(butil::IOBuf* buf, void* arr, int len) {
       LOG(INFO) << "Copying IOBuf";
       buf->copy_to(arr, len);
+      LOG(INFO) << "Done copying IOBuf";
     }
 
     void bknr_closure_run(google::protobuf::Closure *closure) {

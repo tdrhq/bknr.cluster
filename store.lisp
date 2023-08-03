@@ -53,18 +53,21 @@
                          store)
   ())
 
-(defclass backward-compatibility-mixin ()
+(defclass backward-compatibility-mixin (cluster-store-mixin)
   ())
 
 
 
-(defmethod initialize-instance :after ((self cluster-store-mixin) &key)
-  (unless (data-path self)
-    ;; The raft data-path may not be in the store object directory! In
-    ;; that case the user might have specified :data-path while
-    ;; creating this object.
-    (setf (data-path self)
-          (path:catdir (store-directory self) "raft/")))
+(defmethod initialize-instance :around ((self cluster-store-mixin) &rest args &key data-path directory)
+  (cond
+    (data-path
+     (call-next-method))
+    (t
+     ;; The raft data-path may not be in the store object directory! In
+     ;; that case the user might have specified :data-path while
+     ;; creating this object.
+     (apply #'call-next-method self :data-path (path:catdir directory "raft/")
+            args)))
   ;; TODO: maybe move to restore-store?
   (start-up self))
 
@@ -88,16 +91,7 @@
 (defmethod commit-transaction ((store cluster-store-mixin)
                                transaction)
   (log:info "Commiting transaction here")
-  (handler-bind ((error (lambda (e)
-                          (dbg:output-backtrace e))))
-    (execute-unlogged transaction)))
-
-(defmethod commit-transaction ((store cluster-store-mixin)
-                               transaction)
-  (log:info "Commiting transaction here")
-  (handler-bind ((error (lambda (e)
-                          (dbg:output-backtrace e))))
-    (execute-unlogged transaction)))
+  (execute-unlogged transaction))
 
 (defvar *current-snapshot-dir*)
 
@@ -108,6 +102,9 @@
 (defmethod store-random-state-pathname ((store cluster-store-mixin))
   (merge-pathnames #P"random-state" *current-snapshot-dir*))
 
+;; Not sure if I need to do this. store-version subsystem still uses
+;; this directory, and I'm not sure if something else does too.
+#+nil
 (defmethod ensure-store-current-directory ((store cluster-store-mixin))
   ;; ignore
   (values))
@@ -169,7 +166,7 @@
 
 (defmethod restore-store :after ((store backward-compatibility-mixin) &key)
   (cond
-    ((path:-d (path:catdir (store-directory store) "raft/"))
+    ((path:-d (data-path store))
      (log:info "We found state associated with raft, we will not load the old store."))
     (t
      (load-from-dir

@@ -107,7 +107,7 @@
       (assert-that (class-instances 'foo)
                    (contains obj))
       (snapshot)
-      (is-false (path:-d (path:catdir dir "current/")) )
+      (is-false (path:-e (path:catfile dir "current/random-state")) )
       (safe-close-store)
       (assert-that (mapcar #'namestring (directory (path:catdir dir "raft/snapshot/")))
                    ;; in particular there shouldn't be a temp***:0 directory here.
