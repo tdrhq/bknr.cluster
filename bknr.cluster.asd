@@ -37,6 +37,7 @@
   :depends-on (:bknr.datastore
                :cl-store
                :util/threading
+               :file-lock
                :easy-macros
                :bordeaux-threads)
   :components ((braft-cpp-library "braft_compat")

@@ -7,7 +7,6 @@
 #include <braft/storage.h>               // braft::SnapshotWriter
 #include <braft/util.h>                  // braft::AsyncClosureGuard
 #include <braft/protobuf_file.h>         // braft::ProtoBufFile
-#include <sys/file.h> // for flock
 
 namespace bknr {
 
@@ -64,8 +63,6 @@ public:
   typedef void OnLeaderStop(BknrStateMachine* fsm);
 
   class BknrStateMachine : public braft::StateMachine {
-    int _lock_fd;
-
     OnApplyCallback* _on_apply_callback;
     OnSnapshotSave* _on_snapshot_save;
     OnSnapshotLoad* _on_snapshot_load;
@@ -79,8 +76,7 @@ public:
       OnSnapshotLoad* on_snapshot_load,
       OnLeaderStart* on_leader_start,
       OnLeaderStop* on_leader_stop
-      ) : _lock_fd(-1),
-          _on_apply_callback(on_apply_callback),
+      ) : _on_apply_callback(on_apply_callback),
           _on_snapshot_save(on_snapshot_save),
           _on_snapshot_load(on_snapshot_load),
           _on_leader_start(on_leader_start),
@@ -139,36 +135,12 @@ public:
             delete node;
             return -6;
         }
-        string lock_file = data_path + "/bknr.cluster.lock";
-        _lock_fd = open(lock_file.c_str(),
-                        O_RDWR | O_CREAT,
-                        S_IRWXU);
-        if (_lock_fd < 0) {
-          perror("Failed to open lock file");
-          return -2;
-        }
-
-        LOG(INFO) << "Waiting for file lock...";
-        // This is some stupid shit. Ignore it. It's currently used by
-        // a monitoring script to see if the new process is ready.
-        LOG(INFO) << "[FAKE LOG] Opening transaction log lock";
-        LOG(INFO).flush();
-
-        if (flock(_lock_fd, LOCK_EX) < 0) {
-          perror("Failed to get lock");
-          return -3;
-        }
         _node = node;
         return 0;
     }
 
     void shutdown() {
       if (_node) {
-        if (_lock_fd > 0) {
-          flock(_lock_fd, LOCK_UN);
-          close(_lock_fd);
-          _lock_fd = -1;
-        }
         _node->shutdown(NULL);
       }
     }

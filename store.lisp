@@ -47,7 +47,8 @@
 (in-package :bknr.cluster/store)
 
 (defclass cluster-store-mixin (lisp-state-machine)
-  ())
+  ((file-lock :initarg :file-lock
+              :accessor file-lock)))
 
 (defclass cluster-store (cluster-store-mixin
                          store)
@@ -69,9 +70,15 @@
      (apply #'call-next-method self :data-path (path:catdir directory "raft/")
             args)))
   ;; TODO: maybe move to restore-store?
+  (setf (file-lock self) (file-lock:make-file-lock :file
+                                                   (ensure-directories-exist
+                                                    (path:catfile
+                                                     (data-path self)
+                                                     "store.lock"))))
   (start-up self))
 
 (defmethod close-store-object :before ((self cluster-store-mixin))
+  (file-lock:release-file-lock (file-lock self))
   (shutdown self))
 
 (defmethod execute-transaction ((store cluster-store-mixin)
