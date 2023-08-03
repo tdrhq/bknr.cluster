@@ -435,7 +435,8 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                               :allocation :static))
             (cv-handle (atomics:atomic-incf *next-cv-handle*))
             (cv (bt:make-condition-variable))
-            (result nil))
+            (result nil)
+            (error-msg nil))
         (setf (gethash cv-handle *cv-map*)
               cv)
 
@@ -453,6 +454,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                          (bt:condition-notify cv))))
                     (t
                      (log:info "Got error: ~a" msg)
+                     (setf error-msg msg)
                      (bt:condition-notify cv))))))
           (unwind-protect
                (bt:with-lock-held (*lock*)
@@ -465,6 +467,8 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                    (error "Transaction failed to apply in time"))
                  (when (lisp-closure-error closure)
                    (error (lisp-closure-error closure)))
+                 (when error-msg
+                   (error "~a" error-msg))
                  result)))))))
 
 (fli:define-foreign-function bknr-snapshot

@@ -183,6 +183,12 @@ public:
         redirect(response); } */
       const int64_t term = _leader_term.load(butil::memory_order_relaxed);
 
+      if (term < 0) {
+        braft::AsyncClosureGuard closure_guard(closure);
+        LOG(ERROR) << "Attempting to to apply task when we're not a leader";
+        closure->status().set_error(1, "Attempting to apply task when we're not a leader");
+        return;
+      }
 
       butil::IOBuf log;
       log.append(data, data_len);
@@ -194,12 +200,6 @@ public:
       // fail
       task.done = closure;
 
-      if (term < 0) {
-              brpc::ClosureGuard closure_guard(task.done);
-              LOG(ERROR) << "Attempting to to apply task when we're not a leader";
-              task.done->status().set_error(1, "Attempting to apply task when we're not a leader");
-              return;
-      }
 
 
       // ABA problem can be avoid if expected_term is set
