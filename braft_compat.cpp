@@ -36,7 +36,6 @@ namespace bknr {
       {}
 
     ~BknrClosure() {
-      LOG(INFO) << "Deleting closure!";
       (*_delete_closure)(this);
     }
 
@@ -288,9 +287,7 @@ public:
     }
 
     void bknr_iobuf_copy_to(butil::IOBuf* buf, void* arr, int len) {
-      LOG(INFO) << "Copying IOBuf";
       buf->copy_to(arr, len);
-      LOG(INFO) << "Done copying IOBuf";
     }
 
     void bknr_closure_run(google::protobuf::Closure *closure) {
