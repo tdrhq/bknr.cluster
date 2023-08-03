@@ -263,7 +263,12 @@ public:
         return res;
       };
 
-      if (fsm->_server.Start(port, NULL) != 0) {
+      string ip_and_port = ip;
+      ip_and_port += ":";
+      ip_and_port += std::to_string(port);
+
+      LOG(INFO) << "Starting server on " << ip_and_port;
+      if (fsm->_server.Start(ip_and_port.c_str(), NULL) != 0) {
         LOG(ERROR) << "Fail to start Server";
         return -1;
       }
