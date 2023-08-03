@@ -3,6 +3,7 @@
         #:fiveam
         #:fiveam-matchers)
   (:import-from #:bknr.datastore
+                #:deftransaction
                 #:mp-store
                 #:snapshot
                 #:close-store-object
@@ -180,3 +181,28 @@
                    :directory dir)
     (assert-that (class-instances 'foo)
                  (has-length 3))))
+
+(define-condition my-error (error)
+  ((name :initarg :name)))
+
+(deftransaction tx-crash-now (name)
+  (log:info "about to crash")
+  (error 'my-error :name name))
+
+(test crashing-transaction
+  (with-fixture state ()
+    (signals my-error
+      (tx-crash-now "foo"))))
+
+(test restoring-crashing-transaction
+  (with-fixture state ()
+    (signals my-error
+     (tx-crash-now "foo"))
+    (make-instance 'foo)
+    (safe-close-store)
+    (assert-that (class-instances 'foo)
+                 (has-length 0))
+    ;; Open store should open the store without errors!
+    (open-store)
+    (assert-that (class-instances 'foo)
+                 (has-length 1))))

@@ -86,8 +86,6 @@ public:
 
     void on_apply(::braft::Iterator& iter) {
       for (; iter.valid(); iter.next()) {
-        braft::AsyncClosureGuard done_guard(iter.done());
-
         butil::IOBuf data = iter.data();
 
         int len = data.length();
@@ -98,11 +96,8 @@ public:
           c = dynamic_cast<BknrClosure*>(iter.done());
         }
 
-        int status = (*_on_apply_callback)(this, &data, len, c);
-        if (!status) {
-          LOG(INFO) << "Error applying transaction";
-          iter.done()->status().set_error(1, "Failed to apply transaction");
-        }
+        (*_on_apply_callback)(this, &data, len, c);
+
       }
     }
 

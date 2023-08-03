@@ -86,6 +86,8 @@
      :reader lisp-closure-fn)
    (result :accessor lisp-closure-result
            :initform nil)
+   (%error :accessor lisp-closure-error
+           :initform nil)
    (foreign :initarg :foreign
             :accessor lisp-closure-foreign)))
 
@@ -241,33 +243,6 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
       (log:info "ignoring crash for in ~a" tag)
       error)))
 
-(fli:define-foreign-callable
-    (bknr-on-apply-callback :result-type :int)
-    ((fsm lisp-state-machine)
-     (iobuf (:pointer io-buf))
-     (data-len :int)
-     (closure lisp-closure))
-  (log:info "in on-apply-callable")
-  (without-crashing (:tag "on-apply-callback")
-    (let ((arr (make-array data-len
-                           :element-type '(unsigned-byte 8)
-                           :allocation :static)))
-      (log:info "going to copy")
-      (bknr-iobuf-copy-to
-       iobuf
-       arr
-       data-len)
-      (log:info "calling commit transaction")
-
-      (let ((transaction (decode (flex:make-in-memory-input-stream arr))))
-        (log:info "Going to commit: ~s" transaction)
-        (let ((res (commit-transaction
-                    fsm
-                    transaction)))
-          (log:info "commit transaction callback done")
-          (when closure
-            (setf (lisp-closure-result closure)
-                  res)))))))
 
 (defvar *next-handle* 1)
 
@@ -396,6 +371,46 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
     (log:info "Running closure guard run")
     (bknr-closure-run closure)))
 
+(fli:define-foreign-callable
+    (bknr-on-apply-callback :result-type :int)
+    ((fsm lisp-state-machine)
+     (iobuf (:pointer io-buf))
+     (data-len :int)
+     (closure lisp-closure))
+  (log:info "in on-apply-callable")
+  (flet ((run ()
+           (let ((arr (make-array data-len
+                                  :element-type '(unsigned-byte 8)
+                                  :allocation :static)))
+             (log:info "going to copy")
+             (bknr-iobuf-copy-to
+              iobuf
+              arr
+              data-len)
+             (log:info "calling commit transaction")
+
+             (let ((transaction (decode (flex:make-in-memory-input-stream arr))))
+               (log:info "Going to commit: ~s" transaction)
+               (let ((res (commit-transaction
+                           fsm
+                           transaction)))
+                 (log:info "commit transaction callback done")
+                 res)))))
+    (cond
+      (closure
+          (with-closure-guard (closure)
+            (handler-case
+                (setf (lisp-closure-result closure)
+                      (run))
+              (error (e)
+                (bknr-closure-set-error closure 1 (format nil "~a" e))
+                (setf (lisp-closure-error closure) e)))))
+      (t
+       (ignore-errors
+           (run))))
+    1))
+
+
 (defgeneric on-snapshot-load (fsm snapshot-reader))
 
 (defgeneric on-snapshot-save (fsm snapshot-writer done-closure))
@@ -403,10 +418,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 (defgeneric commit-transaction (state-machine transaction))
 
 (defmethod commit-transaction :around (sm trans)
-  (handler-bind ((error (lambda (e)
-                          (log:info "Got error: ~a" e)
-                          (dbg:output-backtrace :verbose e))))
-    (call-next-method)))
+  (call-next-method))
 
 (defgeneric apply-transaction (state-machine transaction))
 
@@ -440,7 +452,8 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                          (log:info "Got cv: ~a" cv)
                          (bt:condition-notify cv))))
                     (t
-                     (log:error "Got result: ~a" msg))))))
+                     (log:info "Got error: ~a" msg)
+                     (bt:condition-notify cv))))))
           (unwind-protect
                (bt:with-lock-held (*lock*)
                  (bknr-apply-transaction
@@ -450,6 +463,8 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                   closure)
                  (unless (mp:condition-variable-wait cv *lock* :timeout 30)
                    (error "Transaction failed to apply in time"))
+                 (when (lisp-closure-error closure)
+                   (error (lisp-closure-error closure)))
                  result)))))))
 
 (fli:define-foreign-function bknr-snapshot
