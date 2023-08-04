@@ -256,7 +256,8 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
    (leaderp :initform nil
             :reader leaderp
             :writer (setf %leaderp))
-   (config :initarg :config)
+   (config :initarg :config
+           :reader config)
    (election-timeout-ms :initarg :election-timeout-ms
                         :initform 1000)
    (snapshot-interval :initarg :snapshot-interval
@@ -266,6 +267,14 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
               :accessor data-path)
    (group :initarg :group
           :reader group)))
+
+(defclass with-leadership-priority ()
+  ((priority :initarg :priority
+             :reader priority
+             :initform 0
+             :documentation "Either 1,0 or -1. If 0, we do nothing. If 1, then we try to make ourselves the leader. Only one node should have a priority of 1. If -1, we try to relinquish leadership whenever we can. Only a minority of nodes should have priority -1.")
+   (monitoring-thread :initform nil
+                      :accessor monitoring-thread)))
 
 (defvar *state-machine-reverse-hash* (make-hash-table :test #'equalp))
 
@@ -291,7 +300,12 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
     ((sm (:pointer bknr-state-machine)))
   :result-type :int)
 
+(fli:define-foreign-function bknr-transfer-leader
+    ((fsm lisp-state-machine))
+  :result-type :void)
+
 (defmethod start-up ((self lisp-state-machine))
+  (log:info "Starting up machine")
   (allocate-fli self)
   (let ((res (apply #'start-bknr-state-machine
                     (c-state-machine self)
@@ -311,6 +325,48 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                                res)))))))
     (unless (= 0 res)
       (error "Failed to start, got: ~a" res))))
+
+(defmethod start-up :after ((self with-leadership-priority))
+  (log:info "Preparing with-leadership job")
+  (let ((lock (bt:make-lock))
+        (cv (bt:make-condition-variable)))
+    (bt:with-lock-held (lock)
+      (setf (monitoring-thread self)
+            (bt:make-thread
+             (lambda ()
+               (bt:with-lock-held (lock)
+                 (bt:condition-notify cv))
+               (monitor-leadership self))
+             :name "leadership-monitoring-thread"))
+      (bt:condition-wait cv lock))))
+
+(defmethod shutdown :before ((self with-leadership-priority))
+  (log:info "Shutting down leadership thread")
+  (mp:process-terminate (monitoring-thread self))
+  (bt:join-thread (monitoring-thread self)))
+
+(defun pick-random (seq)
+  (elt seq (random (length seq))))
+
+(defmethod monitor-leadership ((Self with-leadership-priority))
+  (flet ((random-transfer ()
+           (log:info "Attempting to transfer leadership")
+           (bknr-transfer-leader
+            self)))
+    (loop while t do
+      (progn
+        (log:info "Testing for leadership: before")
+        (sleep 60)
+        (case (priority self)
+          (0 (values))
+          (-1
+           (when (leaderp self)
+             (log:info "leader with priority -1")
+             (random-transfer)))
+          (1
+           (unless (leaderp self)
+             (log:info "leader with priority 1")
+             (random-transfer))))))))
 
 (defun allocate-fli (self)
   (let ((fli (apply #'make-bknr-state-machine

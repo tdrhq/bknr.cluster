@@ -30,6 +30,7 @@
                 #:execute-unlogged
                 #:execute-transaction)
   (:import-from #:bknr.cluster/server
+                #:leaderp
                 #:snapshot-reader-get-path
                 #:bknr-snapshot-writer-add-file
                 #:on-snapshot-load
@@ -118,6 +119,10 @@
 
 (defmethod restore-store ((self cluster-store-mixin) &key)
   (values))
+
+(defmethod leaderp ((store store))
+  ;; a non fsm
+  t)
 
 (defmethod on-snapshot-save ((store cluster-store-mixin)
                              snapshot-writer

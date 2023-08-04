@@ -7,6 +7,7 @@
 #include <braft/storage.h>               // braft::SnapshotWriter
 #include <braft/util.h>                  // braft::AsyncClosureGuard
 #include <braft/protobuf_file.h>         // braft::ProtoBufFile
+#include <braft/cli.h>
 
 namespace bknr {
 
@@ -249,6 +250,7 @@ public:
                                  int snapshot_interval,
                                  const char* data_path,
                                  const char* group) {
+      srand(time(NULL));
       if (braft::add_service(&(fsm->_server), port) != 0) {
         LOG(ERROR) << "Fail to add raft service";
         return -1;
@@ -333,6 +335,23 @@ public:
 
     char* bknr_snapshot_reader_get_path(braft::SnapshotReader* snapshot_reader) {
       return return_cstr(snapshot_reader->get_path());
+    }
+
+    void bknr_transfer_leader(BknrStateMachine* fsm) {
+
+      braft::NodeId nodeId = fsm->_node->node_id();
+
+      LOG(INFO) << "Transfering leader";
+
+      std::vector<braft::PeerId> peers;
+      fsm->_node->list_peers(&peers);
+      peers.push_back(nodeId.peer_id);
+
+      ::braft::Configuration c(peers);
+      braft::PeerId p = peers[rand() % peers.size()];
+
+      ::braft::cli::CliOptions cliOptions;
+      ::braft::cli::transfer_leader(nodeId.group_id, c, p, cliOptions);
     }
   }
 }
