@@ -47,6 +47,8 @@
    #:backward-compatibility-mixin))
 (in-package :bknr.cluster/store)
 
+(pushnew :bknr.cluster *features*)
+
 (defclass cluster-store-mixin (lisp-state-machine)
   ((file-lock :initarg :file-lock
               :accessor file-lock)))
