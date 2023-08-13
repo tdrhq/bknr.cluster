@@ -348,25 +348,30 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 (defun pick-random (seq)
   (elt seq (random (length seq))))
 
-(defmethod monitor-leadership ((Self with-leadership-priority))
+(defvar *priority-monitoring-sleep-time* 30)
+
+(defmethod monitor-leadership ((self with-leadership-priority))
+  (loop while t do
+    (progn
+      (log:info "Testing for leadership: before")
+      (sleep *priority-monitoring-sleep-time*)
+      (monitor-leadership-tick self))))
+
+(defun monitor-leadership-tick (self)
   (flet ((random-transfer ()
            (log:info "Attempting to transfer leadership")
            (bknr-transfer-leader
             self)))
-    (loop while t do
-      (progn
-        (log:info "Testing for leadership: before")
-        (sleep 60)
-        (case (priority self)
-          (0 (values))
-          (-1
-           (when (leaderp self)
-             (log:info "leader with priority -1")
-             (random-transfer)))
-          (1
-           (unless (leaderp self)
-             (log:info "leader with priority 1")
-             (random-transfer))))))))
+   (case (priority self)
+     (0 (values))
+     (-1
+      (when (leaderp self)
+        (log:info "leader with priority -1")
+        (random-transfer)))
+     (1
+      (unless (leaderp self)
+        (log:info "leader with priority 1")
+        (random-transfer))))))
 
 (defun allocate-fli (self)
   (let ((fli (apply #'make-bknr-state-machine
