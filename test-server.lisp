@@ -8,6 +8,7 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:leader-term
                 #:bknr-closure-run
                 #:closure
                 #:*lisp-closures*
@@ -112,6 +113,11 @@
                 else
                   do
                      (sleep 0.1)))))))
+
+(test leader-term-happy-path ()
+  (with-fixture cluster ()
+    (let ((leader (wait-for-leader machines)))
+      (is (> (leader-term leader) -1)))))
 
 (test simple-transaction-on-single-machine-cluster
   (dotimes (i 2)

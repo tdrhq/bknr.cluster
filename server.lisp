@@ -23,7 +23,8 @@
   (:export
    #:snapshot
    #:with-closure-guard
-   #:snapshot-writer-get-path))
+   #:snapshot-writer-get-path
+   #:leader-term))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -402,6 +403,12 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
      (closure lisp-closure))
   :result-type :void)
 
+(fli:define-foreign-function bknr-get-term
+    ((sm lisp-state-machine))
+  :result-type :int)
+
+(defmethod leader-term ((sm lisp-state-machine))
+  (bknr-get-term sm))
 
 (fli:define-foreign-callable (bknr-snapshot-save
                               :result-type :void)
@@ -419,7 +426,9 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
      (snapshot-reader (:pointer snapshot-reader)))
   ;; returns 0 for success, 1 for fail
   (without-crashing (:error 1 :success 0 :tag "snapshot-load")
-   (on-snapshot-load sm snapshot-reader)))
+    (on-snapshot-load sm snapshot-reader)))
+
+
 
 (def-easy-macro with-closure-guard (closure &fn fn)
   (assert closure)

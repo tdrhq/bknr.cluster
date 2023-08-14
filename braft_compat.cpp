@@ -353,5 +353,9 @@ public:
       ::braft::cli::CliOptions cliOptions;
       ::braft::cli::transfer_leader(nodeId.group_id, c, p, cliOptions);
     }
+
+    int bknr_get_term(BknrStateMachine* fsm) {
+      return fsm->_leader_term.load(butil::memory_order_relaxed);
+    }
   }
 }
