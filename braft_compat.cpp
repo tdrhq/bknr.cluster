@@ -357,5 +357,9 @@ public:
     int bknr_get_term(BknrStateMachine* fsm) {
       return fsm->_leader_term.load(butil::memory_order_relaxed);
     }
+
+    char* bknr_leader_id(BknrStateMachine* fsm) {
+      return return_cstr(fsm->_node->leader_id().to_string());
+    }
   }
 }

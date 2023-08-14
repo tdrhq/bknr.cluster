@@ -410,6 +410,13 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 (defmethod leader-term ((sm lisp-state-machine))
   (bknr-get-term sm))
 
+(fli:define-foreign-function bknr-leader-id
+    ((sm lisp-state-machine))
+  :result-type (:pointer :char))
+
+(defmethod leader-id ((sm lisp-state-machine))
+  (read-and-free-foreign-string (bknr-leader-id sm)))
+
 (fli:define-foreign-callable (bknr-snapshot-save
                               :result-type :void)
     ((sm lisp-state-machine)
@@ -569,6 +576,11 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
     ((data :pointer))
   :result-type :void)
 
+(defun read-and-free-foreign-string (ptr)
+  (unwind-protect
+       (fli:convert-from-foreign-string ptr)
+    (free ptr)))
+
 (defmacro def-get-path (type)
   (let ((fli-name (intern (format nil "BKNR-~a-GET-PATH" (string type))))
         (lisp-name (intern (format nil "~a-GET-PATH" (string type)))))
@@ -579,9 +591,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 
       (defun ,lisp-name (,type)
         (let ((ptr (,fli-name ,type)))
-          (unwind-protect
-               (pathname (format nil "~a/" (fli:convert-from-foreign-string ptr)))
-            (free ptr)))))))
+          (pathname (format nil "~a/" (read-and-free-foreign-string ptr))))))))
 
 (def-get-path snapshot-writer)
 (def-get-path snapshot-reader)

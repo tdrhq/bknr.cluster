@@ -8,6 +8,7 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:leader-id
                 #:leader-term
                 #:bknr-closure-run
                 #:closure
@@ -25,6 +26,11 @@
                 #:def-easy-macro)
   (:import-from #:util/random-port
                 #:random-port)
+  (:import-from #:fiveam-matchers/strings
+                #:matches-regex
+                #:starts-with)
+  (:import-from #:fiveam-matchers/core
+                #:assert-that)
   (:export
    #:with-peer-and-machines))
 (in-package :bknr.cluster/test-server)
@@ -118,6 +124,12 @@
   (with-fixture cluster ()
     (let ((leader (wait-for-leader machines)))
       (is (> (leader-term leader) -1)))))
+
+(test leader-id-happy-path ()
+  (with-fixture cluster ()
+    (let ((leader (wait-for-leader machines)))
+      (assert-that (leader-id leader)
+                   (matches-regex "127.0.0.1:.*:0")))))
 
 (test simple-transaction-on-single-machine-cluster
   (dotimes (i 2)
