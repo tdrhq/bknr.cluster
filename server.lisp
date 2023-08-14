@@ -77,10 +77,16 @@ purposes.")
 (defvar *lock* (bt:make-lock))
 (defvar *leader-cv* (bt:make-condition-variable))
 
+(defun read-from-fsm-reverse-hash (h)
+  (let ((res (gethash h *state-machine-reverse-hash*)))
+    (unless res
+      (log:error "Could not find state machine for: ~a" h))
+    res))
+
 (fli:define-foreign-converter lisp-state-machine ()
   h
   :foreign-type '(:pointer bknr-state-machine)
-  :foreign-to-lisp `(gethash ,h *state-machine-reverse-hash*)
+  :foreign-to-lisp `(read-from-fsm-reverse-hash ,h)
   :lisp-to-foreign `(c-state-machine ,h))
 
 
