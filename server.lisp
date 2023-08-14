@@ -123,7 +123,6 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
         self))
 
 (defun find-lisp-closure-for-pointer (h)
-  (log:info "Finding lisp closure for: ~a" h)
   (gethash (fli:pointer-address h) *lisp-closures*))
 
 (fli:define-foreign-converter lisp-closure ()
@@ -459,12 +458,10 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
      (iobuf (:pointer io-buf))
      (data-len :int)
      (closure lisp-closure))
-  (log:info "in on-apply-callable")
   (flet ((run ()
            (let ((arr (make-array data-len
                                   :element-type '(unsigned-byte 8)
                                   :allocation :static)))
-             (log:info "going to copy")
              (bknr-iobuf-copy-to
               iobuf
               arr
@@ -472,7 +469,6 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
              (log:info "calling commit transaction")
 
              (let ((transaction (decode (flex:make-in-memory-input-stream arr))))
-               (log:info "Going to commit: ~s" transaction)
                (let ((res (commit-transaction
                            fsm
                            transaction)))
