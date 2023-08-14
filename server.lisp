@@ -33,6 +33,10 @@
 
 (defconstant +protocol-version+ 1)
 
+(defvar *error-count* 0
+  "Keeps track of the number of errors that were ignored for analytics
+purposes.")
+
 ;; Sync with util/misc
 (eval-when (:compile-toplevel)
   (defun relpath (path start)
@@ -236,6 +240,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 (def-easy-macro without-crashing (&key (error 0) (success 1) tag &fn fn)
   (handler-case
       (handler-bind ((error (lambda (e)
+                              (atomics:atomic-incf *error-count*)
                               (format t "Got error for ~a: ~a " tag e)
                               (dbg:output-backtrace :brief t))))
         (fn)
@@ -481,9 +486,10 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                       (run))
               (error (e)
                 (bknr-closure-set-error closure 1 (format nil "~a" e))
-                (setf (lisp-closure-error closure) e)))))
+                (setf (lisp-closure-error closure) e)
+                (atomics:atomic-incf *error-count*)))))
       (t
-       (ignore-errors
+       (without-crashing ()
            (run))))
     1))
 

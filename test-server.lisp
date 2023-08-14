@@ -8,6 +8,8 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:without-crashing
+                #:*error-count*
                 #:leader-id
                 #:leader-term
                 #:bknr-closure-run
@@ -198,3 +200,9 @@
       (bknr-closure-run closure)
       (is-true seen)
       (is (eql 0 (hash-table-count *lisp-closures*))))))
+
+(test without-crashing-updates-error-count
+  (let ((*error-count* 0))
+    (without-crashing ()
+      (error "for test"))
+    (is (eql 1 *error-count*))))

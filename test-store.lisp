@@ -18,6 +18,7 @@
                 #:backward-compatibility-mixin
                 #:cluster-store)
   (:import-from #:bknr.cluster/server
+                #:*error-count*
                 #:leaderp
                 #:with-logs-hidden)
   (:import-from #:util/store/store
@@ -46,34 +47,35 @@
 
 
 (def-fixture state (&key (class 'my-test-store) dir)
-  (with-logs-hidden ()
-    (flet ((do-work (dir)
-             (let* ((port (util/random-port:random-port)))
-               (unwind-protect
-                    (let (store)
-                      (labels ((restore ()
-                                 (safe-close-store)
-                                 (open-store))
-                               (open-store ()
-                                 (setf store
-                                       (make-instance class
-                                                      :election-timeout-ms 100
-                                                      :directory dir
-                                                      :group "dummy"
-                                                      :config (format nil "127.0.0.1:~a:0" port)
-                                                      :port port))
-                                 (loop while (not (leaderp store))
-                                       for i from 0 to 1000
-                                       do (sleep 0.1))))
-                        (open-store)
-                        (&body)))
-                 (safe-close-store)))))
-      (cond
-        (dir
-         (do-work dir))
-        (t
-         (tmpdir:with-tmpdir (dir :prefix "test-store")
-           (do-work dir)))))))
+  (let ((old-error-count *error-count*))
+   (with-logs-hidden ()
+     (flet ((do-work (dir)
+              (let* ((port (util/random-port:random-port)))
+                (unwind-protect
+                     (let (store)
+                       (labels ((restore ()
+                                  (safe-close-store)
+                                  (open-store))
+                                (open-store ()
+                                  (setf store
+                                        (make-instance class
+                                                       :election-timeout-ms 100
+                                                       :directory dir
+                                                       :group "dummy"
+                                                       :config (format nil "127.0.0.1:~a:0" port)
+                                                       :port port))
+                                  (loop while (not (leaderp store))
+                                        for i from 0 to 1000
+                                        do (sleep 0.1))))
+                         (open-store)
+                         (&body)))
+                  (safe-close-store)))))
+       (cond
+         (dir
+          (do-work dir))
+         (t
+          (tmpdir:with-tmpdir (dir :prefix "test-store")
+            (do-work dir))))))))
 
 (test simple-creation
   (with-fixture state ()
@@ -192,7 +194,8 @@
 (test crashing-transaction
   (with-fixture state ()
     (signals my-error
-      (tx-crash-now "foo"))))
+      (tx-crash-now "foo"))
+    (is (> *error-count* old-error-count))))
 
 (test restoring-crashing-transaction
   (with-fixture state ()
