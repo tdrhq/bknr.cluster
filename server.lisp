@@ -78,7 +78,7 @@ purposes.")
 (defvar *leader-cv* (bt:make-condition-variable))
 
 (defun read-from-fsm-reverse-hash (h)
-  (let ((res (gethash h *state-machine-reverse-hash*)))
+  (let ((res (gethash (fli:pointer-address h) *state-machine-reverse-hash*)))
     (unless res
       (log:error "Could not find state machine for: ~a" h))
     res))
@@ -287,7 +287,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
    (monitoring-thread :initform nil
                       :accessor monitoring-thread)))
 
-(defvar *state-machine-reverse-hash* (make-hash-table :test #'equalp))
+(defvar *state-machine-reverse-hash* (make-hash-table))
 
 
 (defmethod initialize-instance :after ((self lisp-state-machine) &key))
@@ -393,14 +393,14 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                                             bknr-on-leader-stop)
                           collect (fli:make-pointer :symbol-name callback)))))
     (setf (c-state-machine self) fli)
-    (setf (gethash fli *state-machine-reverse-hash*)
+    (setf (gethash (fli:pointer-address fli) *state-machine-reverse-hash*)
           self)))
 
 
 (defmethod shutdown ((self lisp-state-machine))
   (stop-bknr-state-machine
    (c-state-machine self))
-  (remhash (c-state-machine self) *state-machine-reverse-hash*)
+  (remhash (fli:pointer-address (c-state-machine self)) *state-machine-reverse-hash*)
   (destroy-bknr-state-machine (c-state-machine self)))
 
 (defvar *cv-map* (make-hash-table :weak-kind :value))
