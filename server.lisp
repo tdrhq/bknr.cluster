@@ -7,6 +7,7 @@
 (defpackage :bknr.cluster/server
   (:use #:cl)
   (:import-from #:bknr.datastore
+                #:*wait-for-tx-p*
                 #:decode
                 #:%write-char
                 #:%decode-char
@@ -548,13 +549,14 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                   copy
                   (length copy)
                   closure)
-                 (unless (mp:condition-variable-wait cv *lock* :timeout 30)
-                   (error "Transaction failed to apply in time"))
-                 (when (lisp-closure-error closure)
-                   (error (lisp-closure-error closure)))
-                 (when error-msg
-                   (error "~a" error-msg))
-                 result)))))))
+                 (when *wait-for-tx-p*
+                   (unless (mp:condition-variable-wait cv *lock* :timeout 30)
+                     (error "Transaction failed to apply in time"))
+                   (when (lisp-closure-error closure)
+                     (error (lisp-closure-error closure)))
+                   (when error-msg
+                     (error "~a" error-msg))
+                   result))))))))
 
 (fli:define-foreign-function bknr-snapshot
     ((fsm lisp-state-machine)

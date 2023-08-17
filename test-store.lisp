@@ -209,3 +209,18 @@
     (open-store)
     (assert-that (class-instances 'foo)
                  (has-length 1))))
+
+(test adding-new-slot-with-initform
+  (with-fixture state ()
+    (eval `(defclass my-class (store-object)
+             ()
+             (:metaclass persistent-class)))
+    (let ((obj (eval `(make-instance 'my-class))))
+      (is-true obj)
+      (eval `(defclass my-class (store-object)
+               ((foor :initform "car"))
+               (:metaclass persistent-class)))
+      (loop for i from 0 to 300
+            until (slot-boundp obj 'foor)
+            do (sleep 0.1))
+      (is (equal "car" (slot-value obj 'foor))))))
