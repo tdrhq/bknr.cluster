@@ -25,7 +25,8 @@
    #:snapshot
    #:with-closure-guard
    #:snapshot-writer-get-path
-   #:leader-term))
+   #:leader-term
+   #:log-transaction-errors))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -503,8 +504,16 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 
 (defgeneric commit-transaction (state-machine transaction))
 
+(defgeneric log-transaction-errors (sm trans e)
+  (:method (sm trans e)
+    (values)))
+
 (defmethod commit-transaction :around (sm trans)
-  (call-next-method))
+  (handler-bind ((error
+                   (lambda (e)
+                     (ignore-errors
+                      (log-transaction-error sm trans e)))))
+   (call-next-method)))
 
 (defgeneric apply-transaction (state-machine transaction))
 
