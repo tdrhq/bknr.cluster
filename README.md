@@ -117,12 +117,32 @@ TODO
 
 ## The usual disclaimers
 
-I haven't yet started using this in prod, but I expect to migrate our
-servers within the next few weeks (from 7/29/23).
+Screenshotbot.io has been successfully using bknr.cluster in our
+production services, including for our Enterprise installs which gets
+a lot of use.
 
-Are you interested in testing this? Please let me know. It helps me to
-have multiple people test something as fundamental as a database.
+So far, it has been super reliable.
 
 ## Failover/failback strategies
 
-TODO.
+At Screenshotbot.io, this is how we set up failover:
+
+* We have three machines replicating with bknr.cluster.
+* Only the leader responds to queries. (In the future, if we need to
+  optimize CPU usage, we could make replicas respond to read queries.)
+* To achieve this, we expose an endpoint /raft-state, which returns
+  200 if it's a leader, and use a AWS Load Balancer to mark only the
+  leader as healthy.
+* The above set up is *good enough*. But it might have a minute or so
+  downtime if the leader goes down. To do even better:
+
+* we have an nginx server running on each of the servers, and these
+  servers are set up to use the other servers in the cluster as a
+  backup if it receives a 502.
+* If one of the CL services gets a request, and it finds out it's not
+  a leader, then it responds with a 502, so that the nginx server will
+  just try the next server.
+
+With this complete setup, our downtime goes does to less than 0.5s,
+but we have some tricks up our sleeve to remove even that 0.5s
+downtime.
