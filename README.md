@@ -115,7 +115,7 @@ the switch before you do.
 
 TODO
 
-## The usual disclaimers
+## Production use
 
 Screenshotbot.io has been successfully using bknr.cluster in our
 production services, including for our Enterprise installs which gets
