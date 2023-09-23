@@ -146,3 +146,6 @@ At Screenshotbot.io, this is how we set up failover:
 With this complete setup, our downtime goes does to less than 0.5s,
 but we have some tricks up our sleeve to remove even that 0.5s
 downtime.
+
+In addition to this, we store blobs in EFS, which is essentially a
+highly available NFS.
