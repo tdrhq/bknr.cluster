@@ -89,7 +89,7 @@ public:
         butil::IOBuf data = iter.data();
 
         int len = data.length();
-        LOG(INFO) << "Calling OnApplyCallback";
+        //LOG(INFO) << "Calling OnApplyCallback";
 
         BknrClosure* c = NULL;
         if (iter.done()) {
