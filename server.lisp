@@ -448,6 +448,9 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
     (on-snapshot-load sm snapshot-reader)))
 
 
+(defun bknr-closure-set-error-from-error (closure e)
+  (bknr-closure-set-error closure 1
+                          (format nil "Failed with: ~a" e)))
 
 (def-easy-macro with-closure-guard (closure &fn fn)
   (assert closure)
@@ -455,8 +458,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
        (handler-case
            (funcall fn)
          (error (e)
-           (bknr-closure-set-error closure 1
-                                   (format nil "Failed with: ~a" e))))
+           (bknr-closure-set-error-from-error closure e)))
     (log:info "Running closure guard run")
     (bknr-closure-run closure)))
 

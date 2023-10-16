@@ -8,6 +8,7 @@
   (:use #:cl
         #:bknr.datastore)
   (:import-from #:bknr.datastore
+                #:snapshot-subsystem-async
                 #:close-subsystem
                 #:encode
                 #:store-transaction-log-stream
@@ -30,6 +31,8 @@
                 #:execute-unlogged
                 #:execute-transaction)
   (:import-from #:bknr.cluster/server
+                #:bknr-closure-run
+                #:bknr-closure-set-error-from-error
                 #:leaderp
                 #:snapshot-reader-get-path
                 #:bknr-snapshot-writer-add-file
@@ -126,36 +129,59 @@
   ;; a non fsm
   t)
 
-(defmethod on-snapshot-save ((store cluster-store-mixin)
-                             snapshot-writer
-                             done)
-  (with-closure-guard (done)
-    (let ((path (ensure-directories-exist
-                 (snapshot-writer-get-path snapshot-writer))))
+(defun %on-snapshot-save (store snapshot-writer done)
+  (let ((path (ensure-directories-exist
+               (snapshot-writer-get-path snapshot-writer)))
+        (callbacks nil)
+        (start-time (get-universal-time)))
+    (flet ((add-pathname (pathname)
+             (let ((name (pathname-name pathname)))
+               (log:info "Adding ~a to snapshot" name)
+               (assert
+                (= 0
+                   (bknr-snapshot-writer-add-file
+                    snapshot-writer
+                    name))))))
       (with-store-state (:read-only store)
         (with-store-guard ()
           (with-log-guard ()
             (with-store-state (:snapshot)
-              (flet ((add-pathname (pathname)
-                       (let ((name (pathname-name pathname)))
-                         (log:info "Adding ~a to snapshot" name)
-                         (assert
-                          (= 0
-                             (bknr-snapshot-writer-add-file
-                              snapshot-writer
-                              name))))))
-                (let ((*current-snapshot-dir* path))
-                  (log:info "Got random-state pathname: ~a" (store-random-state-pathname store))
-                  (ensure-store-random-state store)
-                  (update-store-random-state store)
-                  (add-pathname (store-random-state-pathname store))
+              (let ((*current-snapshot-dir* path))
+                (log:info "Got random-state pathname: ~a" (store-random-state-pathname store))
+                (ensure-store-random-state store)
+                (update-store-random-state store)
+                (add-pathname (store-random-state-pathname store))
 
-                  (dolist (subsystem (store-subsystems store))
-                    (snapshot-subsystem store subsystem)
-                    (let ((pathname (store-subsystem-snapshot-pathname store subsystem)))
-                      ;; Some subsystems don't actually make a snapshot
-                      (when (path:-e pathname)
-                        (add-pathname pathname)))))))))))))
+                (dolist (subsystem (store-subsystems store))
+                  (let ((callback (snapshot-subsystem-async store subsystem)))
+                    (push (list
+                           callback
+                           (store-subsystem-snapshot-pathname store subsystem))
+                          callbacks))))))))
+      (log:info "Synchronous part of the snapshot took ~as" (- (get-universal-time) start-time))
+      (bt:make-thread
+       (lambda ()
+         (handler-case
+             (progn
+               (loop for (callback pathname) in (reverse callbacks)
+                     do
+                        (funcall callback)
+                        ;; Some subsystems don't actually make a snapshot
+                        (when (path:-e pathname)
+                          (add-pathname pathname))))
+           (error (e)
+             (bknr-closure-set-error-from-error done e)))
+         (bknr-closure-run done))))))
+
+(defmethod on-snapshot-save ((store cluster-store-mixin)
+                             snapshot-writer
+                             done)
+  (handler-case
+      (progn
+        (%on-snapshot-save store snapshot-writer done))
+    (error (e)
+      (bknr-closure-set-error-from-error done e)
+      (bknr-closure-run done))))
 
 (defmethod on-snapshot-load ((store cluster-store-mixin)
                              snapshot-reader)

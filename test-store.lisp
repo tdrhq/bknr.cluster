@@ -3,6 +3,10 @@
         #:fiveam
         #:fiveam-matchers)
   (:import-from #:bknr.datastore
+                #:restore-subsystem
+                #:store-object-subsystem
+                #:snapshot-subsystem-async
+                #:store-subsystem-snapshot-pathname
                 #:deftransaction
                 #:mp-store
                 #:snapshot
@@ -14,6 +18,7 @@
                 #:persistent-class
                 #:store-object)
   (:import-from #:bknr.cluster/store
+                #:cluster-store-mixin
                 #:maybe-close-subsystems
                 #:backward-compatibility-mixin
                 #:cluster-store)
@@ -24,10 +29,14 @@
   (:import-from #:util/store/store
                 #:clear-indices-for-tests)
   (:import-from #:easy-macros
-                #:def-easy-macro))
+                #:def-easy-macro)
+  (:import-from #:util/misc
+                #:safe-with-open-file))
 (in-package :bknr.cluster/test-store)
 
 (util/fiveam:def-suite)
+
+(defvar *value* 2)
 
 (defclass foo (store-object)
   ((arg :initarg :arg
@@ -46,36 +55,41 @@
    (close-store)))
 
 
-(def-fixture state (&key (class 'my-test-store) dir)
-  (let ((old-error-count *error-count*))
-   (with-logs-hidden ()
-     (flet ((do-work (dir)
-              (let* ((port (util/random-port:random-port)))
-                (unwind-protect
-                     (let (store)
-                       (labels ((restore ()
-                                  (safe-close-store)
-                                  (open-store))
-                                (open-store ()
-                                  (setf store
-                                        (make-instance class
-                                                       :election-timeout-ms 100
-                                                       :directory dir
-                                                       :group "dummy"
-                                                       :config (format nil "127.0.0.1:~a:0" port)
-                                                       :port port))
-                                  (loop while (not (leaderp store))
-                                        for i from 0 to 1000
-                                        do (sleep 0.1))))
-                         (open-store)
-                         (&body)))
-                  (safe-close-store)))))
-       (cond
-         (dir
-          (do-work dir))
-         (t
-          (tmpdir:with-tmpdir (dir :prefix "test-store")
-            (do-work dir))))))))
+(def-fixture state (&key (class 'my-test-store)
+                    dir
+                    (subsystems (list (make-instance 'store-object-subsystem))))
+  (unwind-protect
+       (let ((old-error-count *error-count*))
+         (with-logs-hidden ()
+           (flet ((do-work (dir)
+                    (let* ((port (util/random-port:random-port)))
+                      (unwind-protect
+                           (let (store)
+                             (labels ((restore ()
+                                        (safe-close-store)
+                                        (open-store))
+                                      (open-store ()
+                                        (setf store
+                                              (make-instance class
+                                                             :subsystems subsystems
+                                                             :election-timeout-ms 100
+                                                             :directory dir
+                                                             :group "dummy"
+                                                             :config (format nil "127.0.0.1:~a:0" port)
+                                                             :port port))
+                                        (loop while (not (leaderp store))
+                                              for i from 0 to 1000
+                                              do (sleep 0.1))))
+                               (open-store)
+                               (&body)))
+                        (safe-close-store)))))
+             (cond
+               (dir
+                (do-work dir))
+               (t
+                (tmpdir:with-tmpdir (dir :prefix "test-store")
+                  (do-work dir)))))))
+    (setf *value* 2)))
 
 (test simple-creation
   (with-fixture state ()
@@ -224,3 +238,33 @@
             until (slot-boundp obj 'foor)
             do (sleep 0.1))
       (is (equal "car" (slot-value obj 'foor))))))
+
+
+(defclass fake-async-subsystem ()
+  ())
+
+(defmethod snapshot-subsystem-async ((store cluster-store-mixin)
+                                     (self fake-async-subsystem))
+  (let ((pathname (store-subsystem-snapshot-pathname store self)))
+    (lambda ()
+      #+nil ;; We don't want this blocking in tests
+      (sleep 10)
+      (with-open-file (output  pathname :direction :output
+                                        :if-does-not-exist :create
+                                        :if-exists :supersede)
+        (format output "~a" *value*)))))
+
+(defmethod restore-subsystem (store (self fake-async-subsystem) &key until)
+  (declare (ignore until))
+  (let ((pathname (store-subsystem-snapshot-pathname store self)))
+    (setf *value* (parse-integer (uiop:read-file-string pathname)))))
+
+(test actual-async-subsystem
+  (with-tmp-store-dir (dir)
+    (with-fixture state (:subsystems (list (make-instance 'fake-async-subsystem))
+                         :dir dir)
+      (setf *value* 3)
+      (bknr.datastore:snapshot)
+      (setf *value* 2)
+      (restore)
+      (is (eql 3 *value*)))))
