@@ -8,6 +8,7 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:with-closure-guard
                 #:without-crashing
                 #:*error-count*
                 #:leader-id
@@ -206,3 +207,30 @@
     (without-crashing ()
       (error "for test"))
     (is (eql 1 *error-count*))))
+
+(test with-closure-guard
+  (let* ((err 0)
+         (success 0)
+         (results nil)
+         (closure (closure (result status msg)
+                    (push status results)
+                    (if status
+                        (incf success)
+                        (incf err)))))
+    (with-closure-guard (closure)
+      (values))
+    (is (equal '(t) results))
+    (is (eql 1 success))
+    (is (eql 0 err))))
+
+(test with-closure-guard-on-error
+  (let* ((err 0)
+         (success 0)
+         (closure (closure (result status msg)
+                    (if status
+                        (incf success)
+                        (incf err)))))
+    (with-closure-guard (closure)
+      (error "dummy"))
+    (is (eql 1 err))
+    (is (eql 0 success))))
