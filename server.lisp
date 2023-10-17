@@ -537,7 +537,9 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
         (setf (gethash cv-handle *cv-map*)
               cv)
 
-        (log:info "Calling from thread: ~a" (bt:current-thread))
+        #+nil
+        (log:debug "Calling from thread: ~a" (bt:current-thread))
+
         (let ((closure
                 (closure (this-result status msg)
                   (cond
