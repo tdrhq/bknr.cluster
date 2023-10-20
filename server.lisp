@@ -179,7 +179,6 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 
 (fli:define-foreign-callable bknr-delete-closure
     ((bknr-closure :pointer))
-  (log:info "Deleteing closure at :~s" bknr-closure)
   (remhash (fli:pointer-address bknr-closure) *lisp-closures*))
 
 (fli:define-foreign-function make-bknr-state-machine
@@ -459,7 +458,6 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
            (funcall fn)
          (error (e)
            (bknr-closure-set-error-from-error closure e)))
-    (log:info "Running closure guard run")
     (bknr-closure-run closure)))
 
 (fli:define-foreign-callable
@@ -476,13 +474,11 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
               iobuf
               arr
               data-len)
-             (log:info "calling commit transaction")
 
              (let ((transaction (decode (flex:make-in-memory-input-stream arr))))
                (let ((res (commit-transaction
                            fsm
                            transaction)))
-                 (log:info "commit transaction callback done")
                  res)))))
     (cond
       (closure
@@ -547,9 +543,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                      (setf result this-result)
                      (log:info "Result on thread: ~a" (bt:current-thread))
                      (bt:with-lock-held (*lock*)
-                       (log:info "Got lock")
                        (when cv
-                         (log:info "Got cv: ~a" cv)
                          (bt:condition-notify cv))))
                     (t
                      (log:info "Got error: ~a" msg)

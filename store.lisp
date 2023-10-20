@@ -103,7 +103,6 @@
 
 (defmethod commit-transaction ((store cluster-store-mixin)
                                transaction)
-  (log:info "Commiting transaction here")
   (execute-unlogged transaction))
 
 (defvar *current-snapshot-dir*)
