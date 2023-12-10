@@ -541,11 +541,13 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                   (cond
                     (status
                      (setf result this-result)
+                     #+nil
                      (log:info "Result on thread: ~a" (bt:current-thread))
                      (bt:with-lock-held (*lock*)
                        (when cv
                          (bt:condition-notify cv))))
                     (t
+                     #+nil
                      (log:info "Got error: ~a" msg)
                      (setf error-msg msg)
                      (bt:condition-notify cv))))))
