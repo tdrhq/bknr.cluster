@@ -367,5 +367,9 @@ public:
       fsm->_node->get_status(&status);
       return braft::is_active_state(status.state);
     }
+
+    void bknr_vote(BknrStateMachine* fsm, int election_timeout) {
+      fsm->_node->vote(election_timeout);
+    }
   }
 }
