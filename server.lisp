@@ -370,7 +370,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 
 (defmethod monitor-leadership ((self with-leadership-priority))
   (loop while t do
-    (progn
+    (when (activep self)
       (log:info "Testing for leadership: before")
       (sleep *priority-monitoring-sleep-time*)
       (monitor-leadership-tick self))))
