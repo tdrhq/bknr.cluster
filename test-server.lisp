@@ -8,6 +8,7 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:activep
                 #:with-closure-guard
                 #:without-crashing
                 #:*error-count*
@@ -105,6 +106,11 @@
   (with-fixture cluster ()
     (is-true
      (wait-for-leader machines))))
+
+(test activep
+  (with-fixture cluster ()
+    (let ((machine (wait-for-leader machines)))
+      (is-true (activep machine)))))
 
 (test simple-transaction
   (dotimes (i 2)

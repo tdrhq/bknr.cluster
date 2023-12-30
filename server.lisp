@@ -26,7 +26,9 @@
    #:with-closure-guard
    #:snapshot-writer-get-path
    #:leader-term
-   #:log-transaction-error))
+   #:log-transaction-error
+   #:bknr-is-active
+   #:activep))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -180,6 +182,10 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 (fli:define-foreign-callable bknr-delete-closure
     ((bknr-closure :pointer))
   (remhash (fli:pointer-address bknr-closure) *lisp-closures*))
+
+(fli:define-foreign-function bknr-is-active
+    ((fsm lisp-state-machine))
+  :result-type :int)
 
 (fli:define-foreign-function make-bknr-state-machine
     ((on-apply-callback :pointer)
@@ -619,3 +625,6 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
     ((sw (:pointer snapshot-writer))
      (file (:reference-pass :ef-mb-string)))
   :result-type :int)
+
+(defmethod activep ((self lisp-state-machine))
+  (not (= (bknr-is-active self) 0)))

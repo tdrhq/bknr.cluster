@@ -361,5 +361,11 @@ public:
     char* bknr_leader_id(BknrStateMachine* fsm) {
       return return_cstr(fsm->_node->leader_id().to_string());
     }
+
+    int bknr_is_active(BknrStateMachine* fsm) {
+      braft::NodeStatus status;
+      fsm->_node->get_status(&status);
+      return braft::is_active_state(status.state);
+    }
   }
 }
