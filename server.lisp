@@ -37,6 +37,8 @@
 
 (defconstant +protocol-version+ 1)
 
+(defvar *commit-lock* (mp:make-lock :name "BKNR sharing lock"))
+
 (defvar *error-count* 0
   "Keeps track of the number of errors that were ignored for analytics
 purposes.")
@@ -517,7 +519,8 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                    (lambda (e)
                      (ignore-errors
                       (log-transaction-error sm trans e)))))
-   (call-next-method)))
+    (bt:with-lock-held (*commit-lock*)
+      (call-next-method))))
 
 (defgeneric apply-transaction (state-machine transaction))
 
