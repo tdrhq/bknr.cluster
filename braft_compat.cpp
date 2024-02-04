@@ -363,6 +363,10 @@ public:
     }
 
     int bknr_is_active(BknrStateMachine* fsm) {
+      if (!fsm->_node) {
+              return 0;
+      }
+
       braft::NodeStatus status;
       fsm->_node->get_status(&status);
       return braft::is_active_state(status.state);
