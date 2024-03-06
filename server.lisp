@@ -412,9 +412,6 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
   (remhash (fli:pointer-address (c-state-machine self)) *state-machine-reverse-hash*)
   (destroy-bknr-state-machine (c-state-machine self)))
 
-(defvar *cv-map* (make-hash-table :weak-kind :value))
-(defvar *next-cv-handle* 0)
-
 (fli:define-foreign-function bknr-apply-transaction
     ((sm lisp-state-machine)
      (data :lisp-simple-1d-array )
@@ -535,12 +532,9 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                               :adjustable nil
                               :initial-contents data
                               :allocation :static))
-            (cv-handle (atomics:atomic-incf *next-cv-handle*))
             (cv (bt:make-condition-variable))
             (result nil)
             (error-msg nil))
-        (setf (gethash cv-handle *cv-map*)
-              cv)
 
         #+nil
         (log:debug "Calling from thread: ~a" (bt:current-thread))
