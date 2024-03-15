@@ -47,7 +47,8 @@
                 #:commit-transaction
                 #:apply-transaction)
   (:export
-   #:backward-compatibility-mixin))
+   #:backward-compatibility-mixin
+   #:on-snapshot-save-impl))
 (in-package :bknr.cluster/store)
 
 (pushnew :bknr.cluster *features*)
@@ -128,7 +129,9 @@
   ;; a non fsm
   t)
 
-(defun %on-snapshot-save (store snapshot-writer done)
+(defmethod on-snapshot-save-impl (store snapshot-writer done)
+  "If you need to add any instrumentation around snapshotting, use this
+function instead of on-snapshot-save, since it will better handle errors"
   (let ((path (ensure-directories-exist
                (snapshot-writer-get-path snapshot-writer)))
         (callbacks nil)
@@ -176,8 +179,7 @@
                              snapshot-writer
                              done)
   (handler-case
-      (progn
-        (%on-snapshot-save store snapshot-writer done))
+      (on-snapshot-save-impl store snapshot-writer done)
     (error (e)
       (bknr-closure-set-error-from-error done e)
       (bknr-closure-run done))))
