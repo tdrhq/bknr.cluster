@@ -28,7 +28,8 @@
    #:leader-term
    #:log-transaction-error
    #:bknr-is-active
-   #:activep))
+   #:activep
+   #:lisp-state-machine-ip))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -270,9 +271,11 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
   ((c-state-machine
     :accessor c-state-machine)
    (ip :initarg :ip
-       :initform "127.0.0.1")
+       :initform "127.0.0.1"
+       :reader lisp-state-machine-ip)
    (port :initarg :port
-         :initform 9090)
+         :initform 9090
+         :reader lisp-state-machine-port)
    (leaderp :initform nil
             :reader leaderp
             :writer (setf %leaderp))

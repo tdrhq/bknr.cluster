@@ -31,6 +31,8 @@
                 #:execute-unlogged
                 #:execute-transaction)
   (:import-from #:bknr.cluster/server
+                #:lisp-state-machine-port
+                #:lisp-state-machine-ip
                 #:bknr-closure-run
                 #:bknr-closure-set-error-from-error
                 #:leaderp
@@ -228,4 +230,23 @@ function instead of on-snapshot-save, since it will better handle errors"
 
 
 (defmethod snapshot-store ((store cluster-store-mixin))
-  (bknr.cluster/server:snapshot store))
+  (bknr.cluster/server:snapshot store)
+  #+linux
+  (copy-snapshot store))
+
+(defmethod copy-snapshot ((store cluster-store-mixin))
+  (let ((output (ensure-directories-exist
+                 (path:catdir (store-directory store) "snapshots/"
+                              (format nil "~a:~a/"
+                                      (lisp-state-machine-ip store)
+                                      (lisp-state-machine-port store))))))
+    (uiop:run-program
+     (list "tar" "czf"
+           (namestring
+            (make-pathname
+             :type "tar.gz"
+             :name (format nil "~a" (local-time:now))
+             :defaults output))
+           (namestring (data-path store)))
+     :output t
+     :error-output t)))
