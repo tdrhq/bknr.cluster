@@ -18,6 +18,7 @@
                 #:persistent-class
                 #:store-object)
   (:import-from #:bknr.cluster/store
+                #:snapshot-backup-dir
                 #:cluster-store-mixin
                 #:maybe-close-subsystems
                 #:backward-compatibility-mixin
@@ -31,7 +32,9 @@
   (:import-from #:easy-macros
                 #:def-easy-macro)
   (:import-from #:util/misc
-                #:safe-with-open-file))
+                #:safe-with-open-file)
+  (:import-from #:fiveam-matchers/strings
+                #:contains-string))
 (in-package :bknr.cluster/test-store)
 
 (util/fiveam:def-suite)
@@ -268,3 +271,8 @@
       (setf *value* 2)
       (restore)
       (is (eql 3 *value*)))))
+
+(test snapshot-backup-dir
+  (with-fixture state ()
+    (assert-that (namestring (snapshot-backup-dir store))
+                 (contains-string "127.0.0.1:"))))

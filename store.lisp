@@ -234,12 +234,15 @@ function instead of on-snapshot-save, since it will better handle errors"
   #+linux
   (copy-snapshot store))
 
+(defun snapshot-backup-dir (store)
+  (path:catdir (store-directory store) "snapshots/"
+               (format nil "./~a:~a/"
+                       (lisp-state-machine-ip store)
+                       (lisp-state-machine-port store))))
+
 (defmethod copy-snapshot ((store cluster-store-mixin))
   (let ((output (ensure-directories-exist
-                 (path:catdir (store-directory store) "snapshots/"
-                              (format nil "~a:~a/"
-                                      (lisp-state-machine-ip store)
-                                      (lisp-state-machine-port store))))))
+                 (snapshot-backup-dir store))))
     (uiop:run-program
      (list "tar" "czf"
            (namestring
