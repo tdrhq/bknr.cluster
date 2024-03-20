@@ -250,6 +250,7 @@ function instead of on-snapshot-save, since it will better handle errors"
              :type "tar.gz"
              :name (format nil "~a" (local-time:now))
              :defaults output))
-           (namestring (data-path store)))
+           "-C" (namestring (data-path store))
+           ".")
      :output t
      :error-output t)))

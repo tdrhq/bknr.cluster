@@ -18,6 +18,7 @@
                 #:persistent-class
                 #:store-object)
   (:import-from #:bknr.cluster/store
+                #:copy-snapshot
                 #:snapshot-backup-dir
                 #:cluster-store-mixin
                 #:maybe-close-subsystems
@@ -276,3 +277,8 @@
   (with-fixture state ()
     (assert-that (namestring (snapshot-backup-dir store))
                  (contains-string "127.0.0.1:"))))
+
+(test copy-snapshot
+  (with-fixture state ()
+    (finishes
+     (copy-snapshot store))))
