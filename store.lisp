@@ -251,6 +251,11 @@ function instead of on-snapshot-save, since it will better handle errors"
              :name (format nil "~a" (local-time:now))
              :defaults output))
            "-C" (namestring (data-path store))
+           ;; Avoid having to tar something that's changing while
+           ;; we're tarring.
+           "--exclude" "raft_meta"
+           "--exclude" "log"
+           "."
            ".")
      :output t
      :error-output t)))
