@@ -29,7 +29,8 @@
    #:log-transaction-error
    #:bknr-is-active
    #:activep
-   #:lisp-state-machine-ip))
+   #:lisp-state-machine-ip
+   #:leader-id))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
