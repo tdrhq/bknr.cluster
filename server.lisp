@@ -285,7 +285,8 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
    (election-timeout-ms :initarg :election-timeout-ms
                         :initform 1000)
    (snapshot-interval :initarg :snapshot-interval
-                       :initform (* 24 30 60))
+                      :initform -1
+                      :documentation "See raft.h: if snapshot_interval is <= 0, then the time based snapshot would be disabled.")
    (data-path :initarg :data-path
               :initform nil
               :accessor data-path)
