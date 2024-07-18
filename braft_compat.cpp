@@ -272,6 +272,21 @@ public:
         return -1;
       }
 
+      string ip_and_port = ip;
+      ip_and_port += ":";
+      ip_and_port += std::to_string(port);
+
+      // Comment from braft counter/server.cpp: (See T1292)
+      // It's recommended to start the [brpc?] server before Counter is started to avoid
+      // the case that it becomes the leader while the service is unreacheable by
+      // clients.
+
+      LOG(INFO) << "Starting brpc server on " << ip_and_port;
+      if (fsm->_server.Start(ip_and_port.c_str(), NULL) != 0) {
+        LOG(ERROR) << "Fail to start Server";
+        return -1;
+      }
+
       int res = fsm->start(ip, port, config,
                            election_timeout_ms,
                            snapshot_interval,
@@ -280,16 +295,6 @@ public:
       if (res != 0) {
         return res;
       };
-
-      string ip_and_port = ip;
-      ip_and_port += ":";
-      ip_and_port += std::to_string(port);
-
-      LOG(INFO) << "Starting server on " << ip_and_port;
-      if (fsm->_server.Start(ip_and_port.c_str(), NULL) != 0) {
-        LOG(ERROR) << "Fail to start Server";
-        return -1;
-      }
 
       return 0;
     }
