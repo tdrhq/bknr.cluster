@@ -208,12 +208,18 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
     ((level :int))
   :result-type :void)
 
+;; Sett brpc/src/butil/logging.h
+(defvar +blog-verbose+ -1)
+(defvar +blog-info+ 0)
+(defvar +blog-error+ 3)
+(defvar +blog-notice+ 1)
+
 ;; For tests
 (def-easy-macro with-logs-hidden (&fn fn)
-  (bknr-set-log-level 3)
+  (bknr-set-log-level +blog-error+)
   (unwind-protect
        (fn)
-    (bknr-set-log-level 1)))
+    (bknr-set-log-level +blog-notice+)))
 
 (fli:define-foreign-function bknr-iobuf-copy-to
     ((iobuf (:pointer io-buf))
