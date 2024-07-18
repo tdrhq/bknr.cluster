@@ -39,6 +39,7 @@
                :util/threading
                :file-lock
                :atomics
+               :local-time
                :easy-macros
                :bordeaux-threads)
   :components ((braft-cpp-library "braft_compat")

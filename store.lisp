@@ -258,4 +258,21 @@ function instead of on-snapshot-save, since it will better handle errors"
            "."
            ".")
      :output t
-     :error-output t)))
+     :error-output t)
+    (cleanup-old-snapshots store output)))
+
+(defmethod cleanup-old-snapshots ((store cluster-store-mixin) backup-dir)
+  (let ((files (fad:list-directory backup-dir)))
+    (loop for file in files
+          if (equal "gz" (pathname-type file))
+            do (maybe-delete-snapshot file))))
+
+(defun maybe-delete-snapshot (snapshot-file)
+  (let ((date (first (str:rsplit "."
+                                 (pathname-name snapshot-file)
+                                  :limit 2))))
+    (let ((ts (local-time:parse-timestring date)))
+      (when (local-time:timestamp< ts
+                                   (local-time:timestamp- (local-time:now) 60 :day))
+        (log:info "Deleting old snapshot: ~a" snapshot-file)
+        (delete-file snapshot-file)))))
