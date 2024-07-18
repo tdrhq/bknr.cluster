@@ -167,6 +167,22 @@ public:
         LOG(INFO) << "Node stepped down : " << status;
     }
 
+    void on_shutdown() {
+        LOG(INFO) << "This node is down";
+    }
+    void on_error(const ::braft::Error& e) {
+        LOG(ERROR) << "Met raft error " << e;
+    }
+    void on_configuration_committed(const ::braft::Configuration& conf) {
+        LOG(INFO) << "Configuration of this group is " << conf;
+    }
+    void on_stop_following(const ::braft::LeaderChangeContext& ctx) {
+        LOG(INFO) << "Node stops following " << ctx;
+    }
+    void on_start_following(const ::braft::LeaderChangeContext& ctx) {
+        LOG(INFO) << "Node start following " << ctx;
+    }
+
     butil::atomic<int64_t> _leader_term;
 
     void apply(const char* data, int data_len, BknrClosure* closure) {
