@@ -8,6 +8,7 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:list-peers
                 #:activep
                 #:with-closure-guard
                 #:without-crashing
@@ -35,6 +36,8 @@
                 #:starts-with)
   (:import-from #:fiveam-matchers/core
                 #:assert-that)
+  (:import-from #:fiveam-matchers/has-length
+                #:has-length)
   (:export
    #:with-peer-and-machines))
 (in-package :bknr.cluster/test-server)
@@ -240,3 +243,9 @@
       (error "dummy"))
     (is (eql 1 err))
     (is (eql 0 success))))
+
+(test list-peers
+  (with-fixture cluster ()
+    (let ((leader (wait-for-leader machines)))
+      (assert-that (list-peers leader)
+                   (has-length 3)))))

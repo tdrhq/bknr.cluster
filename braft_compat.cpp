@@ -383,6 +383,20 @@ public:
       return return_cstr(fsm->_node->leader_id().to_string());
     }
 
+    char* bknr_list_peers(BknrStateMachine* fsm) {
+      string conf;
+
+      std::vector<braft::PeerId> peers;
+      fsm->_node->list_peers(&peers);
+
+      for (auto &peer : peers) {
+        conf += peer.to_string();
+        conf += ",";
+      }
+
+      return return_cstr(conf);
+    }
+
     int bknr_is_active(BknrStateMachine* fsm) {
       if (!fsm->_node) {
               return 0;

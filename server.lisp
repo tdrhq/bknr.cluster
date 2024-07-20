@@ -30,7 +30,8 @@
    #:bknr-is-active
    #:activep
    #:lisp-state-machine-ip
-   #:leader-id))
+   #:leader-id
+   #:list-peers))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -636,3 +637,16 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 
 (defmethod activep ((self lisp-state-machine))
   (not (= (bknr-is-active self) 0)))
+
+(fli:define-foreign-function bknr-list-peers
+    ((fsm lisp-state-machine))
+  :result-type (:pointer :char))
+
+(defmethod list-peers ((self lisp-state-machine))
+  (let ((str (read-and-free-foreign-string
+              (bknr-list-peers self))))
+    ;; TODO: temporary backward compatibility, delete this unless in the future
+    (unless (fli:null-pointer-p (fli:make-pointer :symbol-name 'bknr-list-peers))
+      (remove-if
+       #'str:emptyp
+       (str:split "," str)))))
