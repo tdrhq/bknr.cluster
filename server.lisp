@@ -574,7 +574,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                   (length copy)
                   closure)
                  (when *wait-for-tx-p*
-                   (unless (mp:condition-variable-wait cv *lock* :timeout 30)
+                   (unless (mp:condition-variable-wait cv *lock* :timeout 45)
                      (error "Transaction failed to apply in time"))
                    (when (lisp-closure-error closure)
                      (error (lisp-closure-error closure)))
