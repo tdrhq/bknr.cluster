@@ -117,8 +117,9 @@ TODO
 
 ## Production use
 
-Screenshotbot.io has been successfully using bknr.cluster in our
-production services, including for our Enterprise installs which gets
+We have been successfully using bknr.cluster in our
+production services for [Screenshotbot](https://screenshotbot.io),
+including for our Enterprise installs which gets
 a lot of use.
 
 So far, it has been super reliable.
