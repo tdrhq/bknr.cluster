@@ -252,7 +252,10 @@ function instead of on-snapshot-save, since it will better handle errors"
              :defaults output))
            "-C" (namestring (data-path store))
            "--warning=no-file-changed"
-           "."
+           ;; Avoid having to tar something that's changing while
+           ;; we're tarring.
+           "--exclude" "raft_meta"
+           "--exclude" "log"
            ".")
      :output t
      :error-output t)
