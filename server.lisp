@@ -167,7 +167,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 (fli:define-c-struct snapshot-reader
     (foo :int))
 
-(fli:define-foreign-callable bknr-invoke-closure
+(fli:define-foreign-callable (bknr-invoke-closure :result-type :void)
     ((bknr-closure (:pointer closure))
      (status :int)
      (str (:pointer :char)))
@@ -184,7 +184,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
                    (> status 0)
                    str)))))))
 
-(fli:define-foreign-callable bknr-delete-closure
+(fli:define-foreign-callable (bknr-delete-closure :result-type :void)
     ((bknr-closure :pointer))
   (remhash (fli:pointer-address bknr-closure) *lisp-closures*))
 
