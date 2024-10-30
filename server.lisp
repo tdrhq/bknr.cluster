@@ -117,7 +117,9 @@ purposes.")
   (:documentation "If braft creates a closure and passes it to us, then this is what we
 do. In this case this closure is only valid in the dynamic extent, and maybe even less."))
 
-(defvar *lisp-closures* (make-hash-table :test #'equalp))
+(defvar *lisp-closures* (make-hash-table :test #'equalp
+                                         #+sbcl #+sbcl
+                                         :synchronized t))
 
 (fli:define-foreign-function bknr-make-closure
     ((invoke-closure :pointer)
@@ -308,7 +310,9 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
    (monitoring-thread :initform nil
                       :accessor monitoring-thread)))
 
-(defvar *state-machine-reverse-hash* (make-hash-table))
+(defvar *state-machine-reverse-hash* (make-hash-table
+                                      #+sbcl #+sbcl
+                                      :synchronized t))
 
 
 (defmethod initialize-instance :after ((self lisp-state-machine) &key))
