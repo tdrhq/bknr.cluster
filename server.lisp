@@ -300,7 +300,14 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
               :initform nil
               :accessor data-path)
    (group :initarg :group
-          :reader group)))
+          :reader group)
+   (on-snapshot-load-complete-p :initform t
+                                :initarg :on-snapshot-load-complete-p
+                                :accessor on-snapshot-load-complete-p))
+  (:default-initargs
+   ;; This let's us migrate existing instances better. In the future,
+   ;; we can move this into the :INITFORM, quite easily. TODO(T1539)
+   :on-snapshot-load-complete-p nil))
 
 (defclass with-leadership-priority ()
   ((priority :initarg :priority
@@ -465,7 +472,8 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
      (snapshot-reader (:pointer snapshot-reader)))
   ;; returns 0 for success, 1 for fail
   (without-crashing (:error 1 :success 0 :tag "snapshot-load")
-    (on-snapshot-load sm snapshot-reader)))
+    (on-snapshot-load sm snapshot-reader)
+    (setf (on-snapshot-load-complete-p sm) t)))
 
 
 (defun bknr-closure-set-error-from-error (closure e)
