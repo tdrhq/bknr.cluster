@@ -31,7 +31,8 @@
    #:activep
    #:lisp-state-machine-ip
    #:leader-id
-   #:list-peers))
+   #:list-peers
+   #:really-activep))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -649,6 +650,12 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 
 (defmethod activep ((self lisp-state-machine))
   (not (= (bknr-is-active self) 0)))
+
+(defmethod really-activep ((self lisp-state-machine))
+  "In the future we might want to combine this with activep."
+  (and
+   (activep self)
+   (on-snapshot-load-complete-p self)))
 
 (fli:define-foreign-function bknr-list-peers
     ((fsm lisp-state-machine))
