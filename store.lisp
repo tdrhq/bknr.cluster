@@ -204,11 +204,12 @@ function instead of on-snapshot-save, since it will better handle errors"
 
 (defmethod load-from-dir ((store cluster-store-mixin)
                           dir)
-  (with-store-state (:restore)
-    (let ((*current-snapshot-dir* dir))
-      (ensure-store-random-state store)
-      (dolist (subsystem (store-subsystems store))
-        (restore-subsystem store subsystem)))))
+  (let ((bknr.datastore::*in-restore-p* t))
+   (with-store-state (:restore)
+     (let ((*current-snapshot-dir* dir))
+       (ensure-store-random-state store)
+       (dolist (subsystem (store-subsystems store))
+         (restore-subsystem store subsystem))))))
 
 (defmethod restore-store :after ((store backward-compatibility-mixin) &key)
   (cond
