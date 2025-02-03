@@ -32,7 +32,8 @@
    #:lisp-state-machine-ip
    #:leader-id
    #:list-peers
-   #:really-activep))
+   #:really-activep
+   #:leaderp))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)

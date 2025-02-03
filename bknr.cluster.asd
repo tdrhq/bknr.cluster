@@ -44,7 +44,8 @@
                :bordeaux-threads)
   :components ((braft-cpp-library "braft_compat")
                (:file "server")
-               (:file "store")))
+               (:file "store")
+               (:file "all")))
 
 
 #+(and lispworks linux)
