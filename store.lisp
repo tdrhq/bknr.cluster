@@ -48,6 +48,10 @@
                 #:lisp-state-machine
                 #:commit-transaction
                 #:apply-transaction)
+  (:import-from #:local-time
+                #:parse-timestring)
+  (:import-from #:bknr.cluster/snapshots
+                #:snapshot-timestamps-to-delete)
   (:export
    #:backward-compatibility-mixin
    #:on-snapshot-save-impl))
@@ -262,18 +266,22 @@ function instead of on-snapshot-save, since it will better handle errors"
      :error-output t)
     (cleanup-old-snapshots store output)))
 
+(defun snapshot-pathname-date (file)
+  (parse-timestring
+   (first (str:rsplit "." (pathname-name file) :limit 2))))
+
 (defmethod cleanup-old-snapshots ((store cluster-store-mixin) backup-dir)
   (let ((files (fad:list-directory backup-dir)))
-    (loop for file in files
-          if (equal "gz" (pathname-type file))
-            do (maybe-delete-snapshot file))))
+    (let* ((timestamps (loop for file in files
+                            if (equal "gz" (pathname-type file))
+                              collect (snapshot-pathname-date file)))
+           (timestamps-to-delete
+             (snapshot-timestamps-to-delete timestamps)))
+      (loop for file in files
+            if (and
+                (equal "gz" (pathname-type file))
+                (member (snapshot-pathname-date file) timestamps-to-delete :test #'local-time:timestamp=))
+              do
+                 (log:info "Deleting old snapshot: ~a" file)
+                 (delete-file file) ))))
 
-(defun maybe-delete-snapshot (snapshot-file)
-  (let ((date (first (str:rsplit "."
-                                 (pathname-name snapshot-file)
-                                  :limit 2))))
-    (let ((ts (local-time:parse-timestring date)))
-      (when (local-time:timestamp< ts
-                                   (local-time:timestamp- (local-time:now) 60 :day))
-        (log:info "Deleting old snapshot: ~a" snapshot-file)
-        (delete-file snapshot-file)))))

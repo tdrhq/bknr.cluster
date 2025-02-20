@@ -282,3 +282,4 @@
   (with-fixture state ()
     (finishes
      (copy-snapshot store))))
+

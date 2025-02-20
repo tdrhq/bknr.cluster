@@ -39,10 +39,12 @@
                :util/threading
                :file-lock
                :atomics
+               :serapeum
                :local-time
                :easy-macros
                :bordeaux-threads)
   :components ((braft-cpp-library "braft_compat")
+               (:file "snapshots")
                (:file "server")
                (:file "store")
                (:file "all")))
@@ -55,4 +57,5 @@
                #:fiveam-matchers
                #:util/fiveam)
   :components ((:file "test-server")
+               (:file "test-snapshots")
                (:file "test-store")))
