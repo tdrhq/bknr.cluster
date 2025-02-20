@@ -11,7 +11,7 @@
 (in-package :bknr.cluster/snapshots)
 
 (defun snapshot-timestamps-to-delete (timestamps &key (now (local-time:now))
-                                                   (keep-all 14)
+                                                   (keep-all 30)
                                                    (keep-none 90))
   "Figures out which timestamps in the list of timestamps to delete.
 
