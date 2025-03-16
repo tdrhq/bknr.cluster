@@ -309,7 +309,6 @@ public:
       return fsm->_node->is_leader();
     }
 
-
     void bknr_apply_transaction(BknrStateMachine* fsm, const char* data, int data_len, BknrClosure* closure) {
       fsm->apply(data, data_len, closure);
     }
