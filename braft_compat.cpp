@@ -7,7 +7,6 @@
 #include <braft/storage.h>               // braft::SnapshotWriter
 #include <braft/util.h>                  // braft::AsyncClosureGuard
 #include <braft/protobuf_file.h>         // braft::ProtoBufFile
-#include <braft/cli.h>
 
 namespace bknr {
 
