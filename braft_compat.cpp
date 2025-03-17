@@ -356,6 +356,7 @@ public:
       return return_cstr(snapshot_reader->get_path());
     }
 
+    /* We should stop using this eventually, use bknr_transfer_leader_to_peer */
     void bknr_transfer_leader(BknrStateMachine* fsm) {
 
       braft::NodeId nodeId = fsm->_node->node_id();
@@ -375,6 +376,12 @@ public:
       }
     }
 
+    // if peerStr is "0.0.0.0:0:0", then it will randomly transfered to the
+    // best peer. See documentation in NodeImpl::transfer_leadership_to.
+    int bknr_transfer_leadership_to_peer(BknrStateMachine* fsm, const char* peerStr) {
+      braft::PeerId peer(peerStr);
+      return fsm->_node->transfer_leadership_to(peer);
+    }
 
     int bknr_get_term(BknrStateMachine* fsm) {
       return fsm->_leader_term.load(butil::memory_order_relaxed);

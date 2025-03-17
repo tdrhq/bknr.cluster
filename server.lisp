@@ -349,6 +349,11 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
     ((fsm lisp-state-machine))
   :result-type :void)
 
+(fli:define-foreign-function bknr-transfer-leadership-to-peer
+    ((fsm lisp-state-machine)
+     (peer (:reference-pass :ef-mb-string)))
+  :result-type :void)
+
 (defmethod start-up ((self lisp-state-machine))
   (log:info "Starting up machine")
   (allocate-fli self)
@@ -401,6 +406,10 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
       (log:info "Testing for leadership: before")
       (sleep *priority-monitoring-sleep-time*)
       (monitor-leadership-tick self))))
+
+(defmethod transfer-to-random-peer ((self lisp-state-machine))
+  (bknr-transfer-leadership-to-peer self
+                                    "0.0.0.0:0:0"))
 
 (defun monitor-leadership-tick (self)
   (flet ((random-transfer ()

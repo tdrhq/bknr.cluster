@@ -54,6 +54,9 @@
 (defsystem #:bknr.cluster/tests
   :serial t
   :depends-on (#:bknr.cluster
+               #:util/random-port
+               #:tmpdir
+               #:util.store
                #:fiveam-matchers
                #:util/fiveam)
   :components ((:file "test-server")
