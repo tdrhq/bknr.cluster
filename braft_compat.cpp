@@ -106,9 +106,9 @@ public:
               int snapshot_interval,
               string data_path,
               string group) {
-      butil::ip_t ipt;
-      butil::str2ip(ip.c_str(), &ipt);
-      butil::EndPoint addr(ipt, port);
+      butil::EndPoint addr;
+      butil::str2endpoint(ip.c_str(), port, &addr);
+
       braft::NodeOptions node_options;
       if (node_options.initial_conf.parse_from(config) != 0) {
             LOG(ERROR) << "Fail to parse configuration `" << config << '\'';
