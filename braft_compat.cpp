@@ -370,10 +370,8 @@ public:
       ::braft::Configuration c(peers);
       braft::PeerId p = peers[rand() % peers.size()];
 
-      int res = fsm->_node->transfer_leadership_to(p);
-      if (res == -1) {
-          LOG(ERROR) << "Leadership transfer failed";
-      }
+      ::braft::cli::CliOptions cliOptions;
+      ::braft::cli::transfer_leader(nodeId.group_id, c, p, cliOptions);
     }
 
     // if peerStr is "0.0.0.0:0:0", then it will randomly transfered to the
