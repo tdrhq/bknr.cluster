@@ -465,7 +465,12 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
   :result-type (:pointer :char))
 
 (defmethod leader-id ((sm lisp-state-machine))
-  (read-and-free-foreign-string (bknr-leader-id sm)))
+  (let ((id (read-and-free-foreign-string (bknr-leader-id sm))))
+    (cond
+      ((str:starts-with-p "0.0.0.0:" id)
+       nil)
+      (t
+       id))))
 
 (fli:define-foreign-callable (bknr-snapshot-save
                               :result-type :void)

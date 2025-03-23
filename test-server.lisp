@@ -36,9 +36,12 @@
                 #:matches-regex
                 #:starts-with)
   (:import-from #:fiveam-matchers/core
+                #:has-typep
                 #:assert-that)
   (:import-from #:fiveam-matchers/has-length
                 #:has-length)
+  (:import-from #:fiveam-matchers/lists
+                #:contains-in-any-order)
   (:export
    #:with-peer-and-machines))
 (in-package :bknr.cluster/test-server)
@@ -74,12 +77,14 @@
         (fn ports machines)))))
 
 
-(def-fixture cluster (&key (num 3))
+(def-fixture cluster (&key (num 3) (start-up t))
   (with-peer-and-machines (peers machines :num num)
-    (mapc #'start-up machines)
+    (when start-up
+      (mapc #'start-up machines))
     (unwind-protect
          (&body)
-      (mapc #'shutdown machines))))
+      (when start-up
+       (mapc #'shutdown machines)))))
 
 (def-fixture follower ()
   (with-peer-and-machines (peers machines :num 3)
@@ -142,7 +147,20 @@
   (with-fixture cluster ()
     (let ((leader (wait-for-leader machines)))
       (assert-that (leader-id leader)
-                   (matches-regex "127.0.0.1:.*:0")))))
+                   (matches-regex "127.0.0.1:.*:0"))
+      (let ((leader-id (leader-id leader)))
+        (assert-that (mapcar #'leader-id machines)
+                     (contains-in-any-order
+                      leader-id
+                      leader-id
+                      (has-typep 'string)))))))
+
+(test leader-id-responds-even-when-theres-no-leader
+  (with-fixture cluster (:start-up nil)
+    (start-up (first machines))
+    (unwind-protect
+         (is (equal nil (leader-id (first machines))))
+      (shutdown (first machines)))))
 
 (test simple-transaction-on-single-machine-cluster
   (dotimes (i 2)
