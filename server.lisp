@@ -33,7 +33,8 @@
    #:leader-id
    #:list-peers
    #:really-activep
-   #:leaderp))
+   #:leaderp
+   #:wait-for-leader))
 (in-package :bknr.cluster/server)
 
 (defconstant +append-entries+ #\A)
@@ -684,3 +685,20 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
       (remove-if
        #'str:emptyp
        (str:split "," str)))))
+
+(defmethod wait-for-leader ((self lisp-state-machine) &key timeout)
+  "Similar to leader-id, but waits up-to TIMEOUT seconds. Be aware that
+you shouldn't use this in any critical algorithms. It's likely that
+this will return immediately even if the leader died (in particular if
+the leader died < ELECTION-TIMEOUT seconds ago."
+  (let ((start-time (get-universal-time)))
+    (loop for i from 0 to 10000
+          for leader = (leader-id self)
+          do
+             (cond
+               (leader
+                (return leader))
+               ((> (get-universal-time) (+ start-time timeout))
+                (return nil))
+               (t
+                (sleep 0.1))))))
