@@ -1,4 +1,4 @@
-/* -*- c-basic-offset: 2; -*- */
+/* -*- mode: c++; c-basic-offset: 2 -*- */
 
 #include <butil/endpoint.h>
 #include <brpc/controller.h>       // brpc::Controller
