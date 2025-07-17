@@ -8,9 +8,6 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
-                #:universal-time-to-unix-time
-                #:bknr-leader-health-monitor-tick
-                #:bknr-set-healthy-until
                 #:transfer-to-random-peer
                 #:list-peers
                 #:activep
@@ -282,35 +279,3 @@
             do (sleep 10))
       (let ((leader2 (wait-for-leader machines)))
         (is (not (equal leader2 leader)))))))
-
-(test update-healthy-time
-  (with-fixture cluster ()
-    (let ((leader (wait-for-leader machines)))
-      (bknr-set-healthy-until
-       leader
-       22))))
-
-(test update-healthy-time-and-tick-does-nothing
-  (with-fixture cluster ()
-    (let ((leader (wait-for-leader machines)))
-      (bknr-set-healthy-until
-       leader
-       (+ 1000 (universal-time-to-unix-time (get-universal-time))))
-      (bknr-leader-health-monitor-tick leader)
-      (is (eql leader (wait-for-leader machines))))))
-
-(test the-health-tick-hasnt-been-updated-in-a-while
-  (dotimes (i 10)
-   (with-fixture cluster ()
-     (let ((leader (wait-for-leader machines)))
-       (bknr-set-healthy-until
-        leader
-        (- (universal-time-to-unix-time (get-universal-time)) 3600))
-       (bknr-leader-health-monitor-tick leader)
-       (loop for i from 0 below 100
-             for new-leader = (wait-for-leader machines)
-             if (not (eql leader new-leader))
-               return (pass)
-             else
-               do (sleep 0.1)
-             finally (fail "Leader did not change within expected time"))))))

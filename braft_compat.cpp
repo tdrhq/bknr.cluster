@@ -70,12 +70,6 @@ public:
     OnLeaderStop* _on_leader_stop;
 
   public:
-    // If not 0, then it's the time until which we've marked this
-    // server as healthy. i.e. If the time goes above this the server
-    // is marked as unhealthy. If we're a leader, we'll switch the
-    // leader.
-    time_t _healthy_until;
-    
     BknrStateMachine (
       OnApplyCallback* on_apply_callback,
       OnSnapshotSave* on_snapshot_save,
@@ -87,7 +81,6 @@ public:
           _on_snapshot_load(on_snapshot_load),
           _on_leader_start(on_leader_start),
           _on_leader_stop(on_leader_stop),
-          _healthy_until(0),
           _node(NULL) {
     }
 
@@ -423,28 +416,6 @@ public:
 
     void bknr_vote(BknrStateMachine* fsm, int election_timeout) {
       fsm->_node->vote(election_timeout);
-    }
-
-    void bknr_set_healthy_until(BknrStateMachine* fsm, time_t healthy_until) {
-      fsm->_healthy_until = healthy_until;
-    }
-
-    // extern for testing
-    void bknr_leader_health_monitor_tick(BknrStateMachine* fsm) {
-      LOG(INFO) << "Braft health check running";
-      time_t now = time(NULL);
-      if (fsm->_healthy_until > 0 &&
-          now > fsm->_healthy_until &&
-          fsm->_node->is_leader()) {
-        bknr_transfer_leadership_to_peer(fsm, "0.0.0.0:0:0");
-      }
-    }
-
-    void bknr_leader_health_monitor(BknrStateMachine* fsm) {
-      while (true) {
-        sleep(60);
-        bknr_leader_health_monitor_tick(fsm);
-      }
     }
   }
 }
