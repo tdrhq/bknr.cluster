@@ -197,6 +197,18 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
     ((fsm lisp-state-machine))
   :result-type :int)
 
+(fli:define-foreign-function bknr-set-healthy-until
+    ((fsm lisp-state-machine)
+     (healthy-until :time-t))
+  :result-type :void)
+
+(fli:define-foreign-function bknr-leader-health-monitor-tick
+    ((fsm lisp-state-machine))
+  :result-type :void
+  :documentation "only being exposed for testing")
+
+
+
 (fli:define-foreign-function make-bknr-state-machine
     ((on-apply-callback :pointer)
      (on-snapshot-save :pointer)
@@ -702,3 +714,9 @@ the leader died < ELECTION-TIMEOUT seconds ago."
                 (return nil))
                (t
                 (sleep 0.1))))))
+
+(defun universal-time-to-unix-time (universal-time)
+  "Convert Common Lisp universal time to Unix time (seconds since Unix epoch)"
+  (- universal-time 2208988800))
+
+
