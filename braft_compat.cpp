@@ -9,6 +9,8 @@
 #include <braft/protobuf_file.h>         // braft::ProtoBufFile
 #include <braft/cli.h>
 
+#define IN_CL_THREAD(x) (x)
+
 namespace bknr {
 
   using std::string;
@@ -96,7 +98,7 @@ public:
           c = dynamic_cast<BknrClosure*>(iter.done());
         }
 
-        (*_on_apply_callback)(this, &data, len, c);
+        IN_CL_THREAD((*_on_apply_callback)(this, &data, len, c));
 
       }
     }
@@ -148,21 +150,21 @@ public:
 
     void on_snapshot_save(braft::SnapshotWriter* writer,
                           braft::Closure* done) {
-      (*_on_snapshot_save)(this, writer, done);
+      IN_CL_THREAD((*_on_snapshot_save)(this, writer, done));
     }
 
     int on_snapshot_load(braft::SnapshotReader* reader) {
-      return (*_on_snapshot_load)(this, reader);
+      return IN_CL_THREAD((*_on_snapshot_load)(this, reader));
     }
 
     void on_leader_start(int64_t term) {
         _leader_term.store(term, butil::memory_order_release);
         LOG(INFO) << "Node becomes leader";
-        (*_on_leader_start)(this);
+        IN_CL_THREAD((*_on_leader_start)(this));
     }
 
     void on_leader_stop(const butil::Status& status) {
-        (*_on_leader_stop)(this);
+        IN_CL_THREAD((*_on_leader_stop)(this));
         _leader_term.store(-1, butil::memory_order_release);
         LOG(INFO) << "Node stepped down : " << status;
     }
