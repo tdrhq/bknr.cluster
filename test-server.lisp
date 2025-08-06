@@ -57,7 +57,9 @@
   (incf (val self)))
 
 (def-easy-macro with-peer-and-machines (&binding ports &binding machines
-                                                 &key (num 3)  &fn fn)
+                                                 &key (num 3)
+                                                 lisp-thread-mode-p
+                                                 &fn fn)
   (with-logs-hidden ()
     (tmpdir:with-tmpdir (dir)
       (let* ((ports (loop for i below num
@@ -70,6 +72,7 @@
                              for id from 0
                              collect (make-instance 'counter
                                                     :election-timeout-ms 100
+                                                    :lisp-thread-mode-p lisp-thread-mode-p
                                                     :data-path (path:catdir dir (format nil "~a/" id))
                                                     :config config
                                                     :group "foobar"
@@ -78,13 +81,15 @@
 
 
 (def-fixture cluster (&key (num 3) (start-up t))
-  (with-peer-and-machines (peers machines :num num)
-    (when start-up
-      (mapc #'start-up machines))
-    (unwind-protect
-         (&body)
-      (when start-up
-       (mapc #'shutdown machines)))))
+  (loop for lisp-thread-mode-p in (list nil t)
+        do
+           (with-peer-and-machines (peers machines :num num :lisp-thread-mode-p lisp-thread-mode-p)
+             (when start-up
+               (mapc #'start-up machines))
+             (unwind-protect
+                  (&body)
+               (when start-up
+                 (mapc #'shutdown machines))))))
 
 (def-fixture follower ()
   (with-peer-and-machines (peers machines :num 3)
@@ -107,7 +112,7 @@
    (loop for i from 0 below (/ max-time interval)
          for machine = (find-leader machines)
          if machine
-           return machine
+            return machine
          do
             (sleep interval))))
 

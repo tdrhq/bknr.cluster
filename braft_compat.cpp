@@ -8,6 +8,7 @@
 #include <braft/util.h>                  // braft::AsyncClosureGuard
 #include <braft/protobuf_file.h>         // braft::ProtoBufFile
 #include <braft/cli.h>
+#include <bthread/execution_queue.h>
 
 #define IN_CL_THREAD(x) (x)
 
@@ -23,6 +24,9 @@ namespace bknr {
   typedef int LispCallback;
 
   class BknrClosure;
+
+  class JobQueue {
+  };
 
   typedef void InvokeClosure(BknrClosure* closure,
                              int ok,
@@ -70,6 +74,7 @@ public:
     OnSnapshotLoad* _on_snapshot_load;
     OnLeaderStart* _on_leader_start;
     OnLeaderStop* _on_leader_stop;
+    JobQueue*  _job_queue; // can be NULL
 
   public:
     BknrStateMachine (
@@ -77,12 +82,14 @@ public:
       OnSnapshotSave* on_snapshot_save,
       OnSnapshotLoad* on_snapshot_load,
       OnLeaderStart* on_leader_start,
-      OnLeaderStop* on_leader_stop
+      OnLeaderStop* on_leader_stop,
+      JobQueue* job_queue
       ) : _on_apply_callback(on_apply_callback),
           _on_snapshot_save(on_snapshot_save),
           _on_snapshot_load(on_snapshot_load),
           _on_leader_start(on_leader_start),
           _on_leader_stop(on_leader_stop),
+          _job_queue(job_queue),
           _node(NULL) {
     }
 
@@ -249,12 +256,15 @@ public:
                                               OnSnapshotSave* on_snapshot_save,
                                               OnSnapshotLoad* on_snapshot_load,
                                               OnLeaderStart* on_leader_start,
-                                              OnLeaderStop* on_leader_stop) {
+                                              OnLeaderStop* on_leader_stop,
+                                              JobQueue* job_queue) {
       return new BknrStateMachine(on_apply_callback,
                                   on_snapshot_save,
                                   on_snapshot_load,
                                   on_leader_start,
-                                  on_leader_stop);
+                                  on_leader_stop,
+                                  job_queue
+                                  );
     }
 
     void destroy_bknr_state_machine(BknrStateMachine* fsm) {
@@ -418,6 +428,14 @@ public:
 
     void bknr_vote(BknrStateMachine* fsm, int election_timeout) {
       fsm->_node->vote(election_timeout);
+    }
+
+    JobQueue* bknr_make_job_queue() {
+      return new JobQueue();
+    }
+
+    void bknr_lisp_thread_handler(JobQueue* queue) {
+      // TODO: delete queue when done
     }
   }
 }

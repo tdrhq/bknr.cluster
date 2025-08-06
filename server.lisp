@@ -202,7 +202,8 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
      (on-snapshot-save :pointer)
      (on-snapshot-load :pointer)
      (on-leader-start :pointer)
-     (on-leader-stop :pointer))
+     (on-leader-stop :pointer)
+     (job-queue :pointer))
   :result-type (:pointer bknr-state-machine)
   :module :braft-compat)
 
@@ -289,6 +290,10 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
    (port :initarg :port
          :initform 9090
          :reader lisp-state-machine-port)
+   (lisp-thread-mode-p :initarg :lisp-thread-mode-p
+                       :initform nil
+                       :reader lisp-thread-mode-p
+                       :documentation "If set to true, all callbacks will be called on a Lisp thread, never from a foreign thread")
    (leaderp :initform nil
             :reader leaderp
             :writer (setf %leaderp))
@@ -355,27 +360,38 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
      (peer (:reference-pass :ef-mb-string)))
   :result-type :void)
 
+(fli:define-foreign-function bknr-lisp-thread-handler
+    ((job-queue :pointer))
+  :result-type :void)
+
 (defmethod start-up ((self lisp-state-machine))
   (log:info "Starting up machine")
-  (allocate-fli self)
-  (let ((res (apply #'start-bknr-state-machine
-                    (c-state-machine self)
-                    (loop for slot in '(ip
-                                        port
-                                        config
-                                        election-timeout-ms
-                                        snapshot-interval
-                                        data-path
-                                        group)
-                          collect
-                          (let ((res (slot-value self slot)))
-                            (cond
-                              ((pathnamep res)
-                               (namestring (ensure-directories-exist res)))
-                              (t
-                               res)))))))
-    (unless (= 0 res)
-      (error "Failed to start, got: ~a" res))))
+  (let ((job-queue (when (lisp-thread-mode-p self)
+                     (bknr-make-job-queue))))
+    (allocate-fli self :job-queue job-queue)
+    (let ((res (apply #'start-bknr-state-machine
+                      (c-state-machine self)
+                      (loop for slot in '(ip
+                                          port
+                                          config
+                                          election-timeout-ms
+                                          snapshot-interval
+                                          data-path
+                                          group)
+                            collect
+                            (let ((res (slot-value self slot)))
+                              (cond
+                                ((pathnamep res)
+                                 (namestring (ensure-directories-exist res)))
+                                (t
+                                 res)))))))
+      (unless (= 0 res)
+        (error "Failed to start, got: ~a" res))
+      (when (lisp-thread-mode-p self)
+        (bt:make-thread
+         (lambda ()
+           (bknr-lisp-thread-handler job-queue))
+         :name "bknr-lisp-handler-thread")))))
 
 (defmethod start-up :after ((self with-leadership-priority))
   (log:info "Preparing with-leadership job")
@@ -428,14 +444,22 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
         (log:info "leader with priority 1")
         (random-transfer))))))
 
-(defun allocate-fli (self)
+(fli:define-foreign-function bknr-make-job-queue
+    ()
+  :result-type :pointer)
+
+
+(defun allocate-fli (self &key job-queue)
   (let ((fli (apply #'make-bknr-state-machine
-                    (loop for callback in '(bknr-on-apply-callback
-                                            bknr-snapshot-save
-                                            bknr-snapshot-load
-                                            bknr-on-leader-start
-                                            bknr-on-leader-stop)
-                          collect (fli:make-pointer :symbol-name callback)))))
+                    (append
+                     (loop for callback in '(bknr-on-apply-callback
+                                             bknr-snapshot-save
+                                             bknr-snapshot-load
+                                             bknr-on-leader-start
+                                             bknr-on-leader-stop)
+                           collect (fli:make-pointer :symbol-name callback))
+                     (list
+                      job-queue)))))
     (setf (c-state-machine self) fli)
     (setf (gethash (fli:pointer-address fli) *state-machine-reverse-hash*)
           self)))
