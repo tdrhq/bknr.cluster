@@ -36,7 +36,7 @@
   :serial t
   :depends-on (:bknr.datastore
                :cl-store
-               :util/threading
+               :util.threading
                :file-lock
                :atomics
                :serapeum
