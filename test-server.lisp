@@ -8,7 +8,6 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
-                #:transfer-to-random-peer
                 #:list-peers
                 #:activep
                 #:with-closure-guard
@@ -274,13 +273,3 @@
       (assert-that (list-peers leader)
                    (has-length 3)))))
 
-(test transfer-peer-happy-path
-  (with-fixture cluster ()
-    (let ((leader (wait-for-leader machines)))
-      (transfer-to-random-peer leader)
-      ;; the leader might not have immediately switched
-      (loop for i below 1000
-            while (equal leader (wait-for-leader machines))
-            do (sleep 10))
-      (let ((leader2 (wait-for-leader machines)))
-        (is (not (equal leader2 leader)))))))

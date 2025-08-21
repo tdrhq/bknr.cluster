@@ -393,60 +393,19 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
            (bknr-lisp-thread-handler job-queue))
          :name "bknr-lisp-handler-thread")))))
 
-(defmethod start-up :after ((self with-leadership-priority))
-  (log:info "Preparing with-leadership job")
-  (let ((lock (bt:make-lock))
-        (cv (bt:make-condition-variable)))
-    (bt:with-lock-held (lock)
-      (setf (monitoring-thread self)
-            (bt:make-thread
-             (lambda ()
-               (bt:with-lock-held (lock)
-                 (bt:condition-notify cv))
-               (monitor-leadership self))
-             :name "leadership-monitoring-thread"))
-      (bt:condition-wait cv lock))))
+;; TODO: DELETE
+(defmethod start-up :after ((self with-leadership-priority)))
 
-(defmethod shutdown :before ((self with-leadership-priority))
-  (log:info "Shutting down leadership thread")
-  (mp:process-terminate (monitoring-thread self))
-  (bt:join-thread (monitoring-thread self)))
+(defmethod shutdown :before ((self with-leadership-priority)))
 
-(defun pick-random (seq)
-  (elt seq (random (length seq))))
+(defmethod monitor-leadership ((self with-leadership-priority)))
 
-(defvar *priority-monitoring-sleep-time* 30)
-
-(defmethod monitor-leadership ((self with-leadership-priority))
-  (loop while t do
-    (when (activep self)
-      (log:info "Testing for leadership: before")
-      (sleep *priority-monitoring-sleep-time*)
-      (monitor-leadership-tick self))))
-
-(defmethod transfer-to-random-peer ((self lisp-state-machine))
-  (bknr-transfer-leadership-to-peer self
-                                    "0.0.0.0:0:0"))
-
-(defun monitor-leadership-tick (self)
-  (flet ((random-transfer ()
-           (log:info "Attempting to transfer leadership")
-           (bknr-transfer-leader
-            self)))
-   (case (priority self)
-     (0 (values))
-     (-1
-      (when (leaderp self)
-        (log:info "leader with priority -1")
-        (random-transfer)))
-     (1
-      (unless (leaderp self)
-        (log:info "leader with priority 1")
-        (random-transfer))))))
+(defun monitor-leadership-tick (self))
 
 (fli:define-foreign-function bknr-make-job-queue
     ()
   :result-type :pointer)
+;; END
 
 
 (defun allocate-fli (self &key job-queue)
