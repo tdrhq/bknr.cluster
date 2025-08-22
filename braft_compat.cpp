@@ -437,5 +437,71 @@ public:
     void bknr_lisp_thread_handler(JobQueue* queue) {
       // TODO: delete queue when done
     }
+
+    int bknr_get_peer_status(BknrStateMachine* fsm, const char* peer_str, 
+                            int* valid, int* installing_snapshot, int* blocking,
+                            int64_t* next_index, int64_t* last_rpc_send_timestamp,
+                            int64_t* flying_append_entries_size, int64_t* readonly_index,
+                            int* consecutive_error_times) {
+      if (!fsm || !fsm->_node || !peer_str) {
+        return -1;
+      }
+
+      // Get the node status to access follower information
+      braft::NodeStatus node_status;
+      fsm->_node->get_status(&node_status);
+
+      // Parse the peer ID
+      braft::PeerId peer_id;
+      if (peer_id.parse(peer_str) != 0) {
+        return -2;  // Invalid peer string format
+      }
+
+      // Look for the peer in stable_followers first
+      auto it = node_status.stable_followers.find(peer_id);
+      if (it == node_status.stable_followers.end()) {
+        // Check unstable_followers
+        it = node_status.unstable_followers.find(peer_id);
+        if (it == node_status.unstable_followers.end()) {
+          return -3;  // Peer not found
+        }
+      }
+
+      const braft::PeerStatus& peer_status = it->second;
+
+      // Copy the status fields to output parameters
+      if (valid) *valid = peer_status.valid ? 1 : 0;
+      if (installing_snapshot) *installing_snapshot = peer_status.installing_snapshot ? 1 : 0;
+      if (blocking) *blocking = peer_status.blocking ? 1 : 0;
+      if (next_index) *next_index = peer_status.next_index;
+      if (last_rpc_send_timestamp) *last_rpc_send_timestamp = peer_status.last_rpc_send_timestamp;
+      if (flying_append_entries_size) *flying_append_entries_size = peer_status.flying_append_entries_size;
+      if (readonly_index) *readonly_index = peer_status.readonly_index;
+      if (consecutive_error_times) *consecutive_error_times = peer_status.consecutive_error_times;
+
+      return 0;  // Success
+    }
+
+    int bknr_get_log_status(BknrStateMachine* fsm, 
+                           int64_t* first_index, int64_t* last_index, 
+                           int64_t* committed_index, int64_t* known_applied_index,
+                           int64_t* pending_index, int* state) {
+      if (!fsm || !fsm->_node) {
+        return -1;
+      }
+
+      braft::NodeStatus node_status;
+      fsm->_node->get_status(&node_status);
+
+      if (first_index) *first_index = node_status.first_index;
+      if (last_index) *last_index = node_status.last_index;
+      if (committed_index) *committed_index = node_status.committed_index;
+      if (known_applied_index) *known_applied_index = node_status.known_applied_index;
+      if (pending_index) *pending_index = node_status.pending_index;
+      if (state) *state = (int)node_status.state;
+
+      return 0;  // Success
+    }
+
   }
 }

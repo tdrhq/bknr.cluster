@@ -408,6 +408,42 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 ;; END
 
 
+(fli:define-foreign-function bknr-get-peer-status
+    ((fsm lisp-state-machine)
+     (peer-str (:reference-pass :ef-mb-string))
+     (valid (:reference-return :int))
+     (installing-snapshot (:reference-return :int))
+     (blocking (:reference-return :int))
+     (next-index (:reference-return :int64))
+     (last-rpc-send-timestamp (:reference-return :int64))
+     (flying-append-entries-size (:reference-return :int64))
+     (readonly-index (:reference-return :int64))
+     (consecutive-error-times (:reference-return :int)))
+  :result-type :int)
+
+(defmethod get-peer-status ((self lisp-state-machine) peer-str)
+  "Returns peer status information for the given peer string.
+Returns a plist with status fields on success, or nil on error."
+  (multiple-value-bind (result valid installing-snapshot blocking
+                        next-index last-rpc-send-timestamp
+                        flying-append-entries-size readonly-index
+                        consecutive-error-times)
+      (bknr-get-peer-status self peer-str 0 0 0 0 0 0 0 0)
+    (cond
+      ((= result 0)
+       (list :valid (not (= valid 0))
+             :installing-snapshot (not (= installing-snapshot 0))
+             :blocking (not (= blocking 0))
+             :next-index next-index
+             :last-rpc-send-timestamp last-rpc-send-timestamp
+             :flying-append-entries-size flying-append-entries-size
+             :readonly-index readonly-index
+             :consecutive-error-times consecutive-error-times))
+      (t
+       nil))))
+
+
+
 (defun allocate-fli (self &key job-queue)
   (let ((fli (apply #'make-bknr-state-machine
                     (append

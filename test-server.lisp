@@ -8,6 +8,7 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:bknr-get-peer-status
                 #:list-peers
                 #:activep
                 #:with-closure-guard
@@ -273,3 +274,38 @@
       (assert-that (list-peers leader)
                    (has-length 3)))))
 
+
+(test bknr-get-peer-status
+  (with-fixture cluster ()
+    (let ((leader (wait-for-leader machines)))
+      (apply-transaction leader :incr)
+      (let ((peer-ids (list-peers leader)))
+        (dolist (peer-id peer-ids)
+          (unless (string= peer-id (leader-id leader))
+            (loop for i from 0 to 100
+                  do
+                     (multiple-value-bind
+                           (result
+                            valid
+                            installing-snapshot
+                            blocking
+                            next-index)
+                         (bknr-get-peer-status leader peer-id
+                                               0
+                                               0
+                                               0
+                                               0
+                                               0
+                                               0
+                                               0
+                                               0)
+                       (when (and (= 0 result)
+                                  (= 1 valid)
+                                  (> 10  next-index 0))
+                         (is (= 0 result))
+                         (is (= 1 valid))
+                         (is (> 10 next-index 0))
+                         (return))
+                       (when (eql 100 i)
+                         (error "Did not reach good state"))
+                       (sleep 0.1)))))))))
