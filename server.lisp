@@ -407,6 +407,24 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
   :result-type :pointer)
 ;; END
 
+(defclass peer-status ()
+  ((valid :initarg :valid
+          :reader peer-status-valid)
+   (installing-snapshot :initarg :installing-snapshot
+                        :reader peer-status-installing-snapshot)
+   (blocking :initarg :blocking
+             :reader peer-status-blocking)
+   (next-index :initarg :next-index
+               :reader peer-status-next-index)
+   (last-rpc-send-timestamp :initarg :last-rpc-send-timestamp
+                            :reader peer-status-last-rpc-send-timestamp)
+   (flying-append-entries-size :initarg :flying-append-entries-size
+                               :reader peer-status-flying-append-entries-size)
+   (readonly-index :initarg :readonly-index
+                   :reader peer-status-readonly-index)
+   (consecutive-error-times :initarg :consecutive-error-times
+                            :reader peer-status-consecutive-error-times)))
+
 
 (fli:define-foreign-function bknr-get-peer-status
     ((fsm lisp-state-machine)
@@ -423,7 +441,7 @@ do. In this case this closure is only valid in the dynamic extent, and maybe eve
 
 (defmethod get-peer-status ((self lisp-state-machine) peer-str)
   "Returns peer status information for the given peer string.
-Returns a plist with status fields on success, or nil on error."
+Returns a peer-status instance on success, or nil on error."
   (multiple-value-bind (result valid installing-snapshot blocking
                         next-index last-rpc-send-timestamp
                         flying-append-entries-size readonly-index
@@ -431,14 +449,15 @@ Returns a plist with status fields on success, or nil on error."
       (bknr-get-peer-status self peer-str 0 0 0 0 0 0 0 0)
     (cond
       ((= result 0)
-       (list :valid (not (= valid 0))
-             :installing-snapshot (not (= installing-snapshot 0))
-             :blocking (not (= blocking 0))
-             :next-index next-index
-             :last-rpc-send-timestamp last-rpc-send-timestamp
-             :flying-append-entries-size flying-append-entries-size
-             :readonly-index readonly-index
-             :consecutive-error-times consecutive-error-times))
+       (make-instance 'peer-status
+                      :valid (not (= valid 0))
+                      :installing-snapshot (not (= installing-snapshot 0))
+                      :blocking (not (= blocking 0))
+                      :next-index next-index
+                      :last-rpc-send-timestamp last-rpc-send-timestamp
+                      :flying-append-entries-size flying-append-entries-size
+                      :readonly-index readonly-index
+                      :consecutive-error-times consecutive-error-times))
       (t
        nil))))
 

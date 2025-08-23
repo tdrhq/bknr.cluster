@@ -8,6 +8,9 @@
   (:use #:cl
         #:fiveam)
   (:import-from #:bknr.cluster/server
+                #:peer-status-next-index
+                #:peer-status-valid
+                #:get-peer-status
                 #:bknr-get-peer-status
                 #:list-peers
                 #:activep
@@ -275,7 +278,7 @@
                    (has-length 3)))))
 
 
-(test bknr-get-peer-status
+(test get-peer-status
   (with-fixture cluster ()
     (let ((leader (wait-for-leader machines)))
       (apply-transaction leader :incr)
@@ -284,27 +287,12 @@
           (unless (string= peer-id (leader-id leader))
             (loop for i from 0 to 100
                   do
-                     (multiple-value-bind
-                           (result
-                            valid
-                            installing-snapshot
-                            blocking
-                            next-index)
-                         (bknr-get-peer-status leader peer-id
-                                               0
-                                               0
-                                               0
-                                               0
-                                               0
-                                               0
-                                               0
-                                               0)
-                       (when (and (= 0 result)
-                                  (= 1 valid)
-                                  (> 10  next-index 0))
-                         (is (= 0 result))
-                         (is (= 1 valid))
-                         (is (> 10 next-index 0))
+                     (let ((peer-status
+                             (get-peer-status leader peer-id)))
+                       (when (and peer-status
+                                  (peer-status-valid peer-status)
+                                  (> 10  (peer-status-next-index peer-status)  0))
+                         (pass)
                          (return))
                        (when (eql 100 i)
                          (error "Did not reach good state"))
