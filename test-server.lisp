@@ -13,6 +13,7 @@
                 #:get-peer-status
                 #:bknr-get-peer-status
                 #:list-peers
+                #:update-conf
                 #:activep
                 #:with-closure-guard
                 #:without-crashing
@@ -297,3 +298,37 @@
                        (when (eql 100 i)
                          (error "Did not reach good state"))
                        (sleep 0.1)))))))))
+
+(test update-conf-from-three-to-one-server
+  (with-fixture cluster ()
+    ;; Start with 3 servers and wait for a leader
+    (let ((leader (wait-for-leader machines)))
+      (is-true leader)
+      
+      ;; Verify we initially have 3 peers
+      (assert-that (list-peers leader)
+                   (has-length 3))
+      
+      ;; Apply a transaction to ensure the cluster is working
+      (apply-transaction leader :incr)
+      (is (eql 1 (val leader)))
+      
+      ;; Update configuration to just the leader's address
+      (let ((leader-id (leader-id leader)))
+        (is-true (update-conf leader leader-id))
+        
+        ;; Wait for the configuration change to take effect
+        (loop for i from 0 to 50
+              do
+                 (sleep 0.1)
+                 (let ((current-peers (list-peers leader)))
+                   (when (= (length current-peers) 1)
+                     ;; Verify the single peer is the original leader
+                     (is (string= (first current-peers) leader-id))
+                     ;; Verify the leader can still process transactions
+                     (apply-transaction leader :incr)
+                     (is (eql 2 (val leader)))
+                     (return (pass))))
+              finally
+                 (error "Configuration change did not complete in time. Current peers: ~a" 
+                        (list-peers leader)))))))

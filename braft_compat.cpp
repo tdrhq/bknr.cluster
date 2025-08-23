@@ -402,6 +402,21 @@ public:
       return return_cstr(fsm->_node->leader_id().to_string());
     }
 
+    int bknr_update_conf(BknrStateMachine* fsm, const char* conf) {
+      if (!fsm || !fsm->_node || !conf) {
+        return -1;
+      }
+
+      braft::Configuration new_conf;
+      if (new_conf.parse_from(conf) != 0) {
+        LOG(ERROR) << "Failed to parse configuration: " << conf;
+        return -2;
+      }
+
+      fsm->_node->change_peers(new_conf, NULL);
+      return 0;
+    }
+
     char* bknr_list_peers(BknrStateMachine* fsm) {
       string conf;
 

@@ -32,6 +32,7 @@
    #:lisp-state-machine-ip
    #:leader-id
    #:list-peers
+   #:update-conf
    #:really-activep
    #:leaderp
    #:wait-for-leader))
@@ -711,9 +712,24 @@ Returns a peer-status instance on success, or nil on error."
    (activep self)
    (on-snapshot-load-complete-p self)))
 
+(fli:define-foreign-function bknr-update-conf
+    ((fsm lisp-state-machine)
+     (conf (:reference-pass :ef-mb-string)))
+  :result-type :int)
+
 (fli:define-foreign-function bknr-list-peers
     ((fsm lisp-state-machine))
   :result-type (:pointer :char))
+
+(defmethod update-conf ((self lisp-state-machine) conf)
+  "Update the cluster configuration. Returns T on success, NIL on failure.
+CONF should be a string specifying the new configuration (e.g., '192.168.1.1:8080:0,192.168.1.2:8080:0')."
+  (let ((result (bknr-update-conf self conf)))
+    (case result
+      (0 t)  ; success
+      (-1 (error "Invalid parameters passed to bknr-update-conf"))
+      (-2 (error "Failed to parse configuration string: ~a" conf))
+      (t (error "Unknown error from bknr-update-conf: ~a" result)))))
 
 (defmethod list-peers ((self lisp-state-machine))
   (let ((str (read-and-free-foreign-string
