@@ -361,7 +361,7 @@ public:
     }
 
     int bknr_snapshot_writer_add_file(braft::SnapshotWriter* snapshot_writer, const char* file) {
-      LOG(ERROR) << "Adding snapshot file: " << file;
+      LOG(INFO) << "Adding snapshot file: " << file;
       return snapshot_writer->add_file(file);
     }
 
